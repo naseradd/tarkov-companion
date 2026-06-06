@@ -1,48 +1,121 @@
 import { defineStore } from 'pinia';
-import type { GameMode, Faction } from '@/lib/tarkov';
+import type { Faction } from '@/lib/tarkov';
 
-const LS_MODE = 'eft.mode';
-const LS_FACTION = 'eft.faction';
-const LS_DONE = 'eft.completedTasks';
+export type Density = 'condensed' | 'regular' | 'relaxed';
 
-function loadDone(): Set<string> {
+const LS = {
+  faction: 'eft.faction',
+  level: 'eft.level',
+  traders: 'eft.traderLevels',
+  hideout: 'eft.hideoutBuilt',
+  done: 'eft.completedTasks',
+  objDone: 'eft.objectivesDone',
+  density: 'eft.density',
+  scav: 'eft.scav',
+};
+
+function loadSet(key: string): Set<string> {
   try {
-    const raw = localStorage.getItem(LS_DONE);
+    const raw = localStorage.getItem(key);
     return new Set(raw ? (JSON.parse(raw) as string[]) : []);
   } catch {
     return new Set();
   }
 }
+function loadRecord(key: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+function loadScav(): { lastTs: number | null; karma: number; intelLevel: number } {
+  try {
+    const raw = localStorage.getItem(LS.scav);
+    return raw ? JSON.parse(raw) : { lastTs: null, karma: 0, intelLevel: 0 };
+  } catch {
+    return { lastTs: null, karma: 0, intelLevel: 0 };
+  }
+}
+
+export const FLEA_LEVEL = 15;
 
 export const useGameStore = defineStore('game', {
   state: () => ({
-    mode: (localStorage.getItem(LS_MODE) as GameMode) || ('regular' as GameMode),
-    faction: (localStorage.getItem(LS_FACTION) as Faction) || ('PMC' as Faction),
-    completed: loadDone(),
+    faction: (localStorage.getItem(LS.faction) as Faction) || ('PMC' as Faction),
+    level: Number(localStorage.getItem(LS.level)) || 1,
+    traderLevels: loadRecord(LS.traders), // normalizedName -> LL (défaut 1)
+    hideoutBuilt: loadRecord(LS.hideout), // normalizedName -> niveau construit (0 = non)
+    completed: loadSet(LS.done), // task IDs
+    objectivesDone: loadSet(LS.objDone), // objective IDs
+    density: (localStorage.getItem(LS.density) as Density) || ('regular' as Density),
+    scav: loadScav(),
   }),
+
   getters: {
-    isDone: (state) => (id: string) => state.completed.has(id),
-    completedCount: (state) => state.completed.size,
+    isDone: (s) => (id: string) => s.completed.has(id),
+    objDone: (s) => (id: string) => s.objectivesDone.has(id),
+    completedCount: (s) => s.completed.size,
+    traderLL: (s) => (normalizedName: string) => s.traderLevels[normalizedName] ?? 1,
+    hideoutLevel: (s) => (normalizedName: string) => s.hideoutBuilt[normalizedName] ?? 0,
+    fleaUnlocked: (s) => s.level >= FLEA_LEVEL,
   },
+
   actions: {
-    setMode(m: GameMode) {
-      this.mode = m;
-      localStorage.setItem(LS_MODE, m);
-    },
     setFaction(f: Faction) {
       this.faction = f;
-      localStorage.setItem(LS_FACTION, f);
+      localStorage.setItem(LS.faction, f);
+    },
+    setLevel(n: number) {
+      this.level = Math.max(1, Math.min(79, Math.round(n) || 1));
+      localStorage.setItem(LS.level, String(this.level));
+    },
+    setTraderLevel(normalizedName: string, ll: number) {
+      this.traderLevels = { ...this.traderLevels, [normalizedName]: ll };
+      localStorage.setItem(LS.traders, JSON.stringify(this.traderLevels));
+    },
+    setHideoutLevel(normalizedName: string, level: number) {
+      this.hideoutBuilt = { ...this.hideoutBuilt, [normalizedName]: Math.max(0, level) };
+      localStorage.setItem(LS.hideout, JSON.stringify(this.hideoutBuilt));
     },
     toggleDone(id: string) {
       if (this.completed.has(id)) this.completed.delete(id);
       else this.completed.add(id);
-      // réassigner pour la réactivité fine + persister
       this.completed = new Set(this.completed);
-      localStorage.setItem(LS_DONE, JSON.stringify([...this.completed]));
+      localStorage.setItem(LS.done, JSON.stringify([...this.completed]));
     },
+    toggleObjective(id: string) {
+      if (this.objectivesDone.has(id)) this.objectivesDone.delete(id);
+      else this.objectivesDone.add(id);
+      this.objectivesDone = new Set(this.objectivesDone);
+      localStorage.setItem(LS.objDone, JSON.stringify([...this.objectivesDone]));
+    },
+    setDensity(d: Density) {
+      this.density = d;
+      localStorage.setItem(LS.density, d);
+    },
+    setScav(patch: Partial<{ lastTs: number | null; karma: number; intelLevel: number }>) {
+      this.scav = { ...this.scav, ...patch };
+      localStorage.setItem(LS.scav, JSON.stringify(this.scav));
+    },
+    stampScavRun() {
+      this.setScav({ lastTs: Date.now() });
+    },
+    /** New wipe / prestige : reset progression (garde la faction + density). */
     resetProgress() {
+      this.level = 1;
+      this.traderLevels = {};
+      this.hideoutBuilt = {};
       this.completed = new Set();
-      localStorage.removeItem(LS_DONE);
+      this.objectivesDone = new Set();
+      this.scav = { lastTs: null, karma: 0, intelLevel: 0 };
+      localStorage.removeItem(LS.done);
+      localStorage.removeItem(LS.objDone);
+      localStorage.removeItem(LS.traders);
+      localStorage.removeItem(LS.hideout);
+      localStorage.removeItem(LS.scav);
+      localStorage.setItem(LS.level, '1');
     },
   },
 });

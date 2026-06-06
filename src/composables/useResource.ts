@@ -1,37 +1,40 @@
-import { ref, watch, type Ref } from 'vue';
-import { useGameStore } from '@/stores/game';
-import type { GameMode } from '@/lib/tarkov';
+import { ref, type Ref } from 'vue';
 
-// Cache module-level partagé : une entrée par (ressource + gameMode).
+// Cache module-level partagé : une entrée par ressource (PvP only, plus de gameMode).
 const cache = new Map<string, unknown>();
+const inflight = new Map<string, Promise<unknown>>();
 
-export function useResource<T>(key: string, fetcher: (mode: GameMode) => Promise<T>) {
-  const game = useGameStore();
+export function useResource<T>(key: string, fetcher: () => Promise<T>) {
   const data = ref<T | null>(null) as Ref<T | null>;
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function load() {
-    const ck = `${key}:${game.mode}`;
-    if (cache.has(ck)) {
-      data.value = cache.get(ck) as T;
+  async function load(force = false) {
+    if (!force && cache.has(key)) {
+      data.value = cache.get(key) as T;
       return;
     }
     loading.value = true;
     error.value = null;
     try {
-      const result = await fetcher(game.mode);
-      cache.set(ck, result);
+      // déduplique les requêtes concurrentes pour la même ressource
+      let p = inflight.get(key) as Promise<T> | undefined;
+      if (!p || force) {
+        p = fetcher();
+        inflight.set(key, p);
+      }
+      const result = await p;
+      cache.set(key, result);
       data.value = result;
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
     } finally {
+      inflight.delete(key);
       loading.value = false;
     }
   }
 
-  watch(() => game.mode, load);
   load();
 
-  return { data, loading, error, reload: load };
+  return { data, loading, error, reload: () => load(true) };
 }
