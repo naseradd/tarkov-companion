@@ -1,189 +1,276 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchTasks, type Task } from '@/lib/tarkov';
-import Spinner from '@/components/Spinner.vue';
+import { taskInfo, negativeRep, factionMatch, type PlayerState } from '@/lib/progression';
+import Spinner from '@/components/ui/Spinner.vue';
+import Card from '@/components/ui/Card.vue';
+import Chip from '@/components/ui/Chip.vue';
+import Stat from '@/components/ui/Stat.vue';
+import Badge from '@/components/ui/Badge.vue';
+import Combobox from '@/components/ui/Combobox.vue';
+import SegmentedControl from '@/components/ui/SegmentedControl.vue';
+import IconBox from '@/components/ui/IconBox.vue';
+import EmptyState from '@/components/ui/EmptyState.vue';
 
 const game = useGameStore();
+const route = useRoute();
 const { data: tasks, loading, error } = useResource<Task[]>('tasks', fetchTasks);
 
-const search = ref('');
+const search = ref((route.query.q as string) || '');
 const trader = ref<string | null>(null);
-const mapFilter = ref<string | null>(null);
+const mapFilter = ref<string>('');
+const stateFilter = ref<'available' | 'all' | 'done'>('available');
 const kappaOnly = ref(false);
-const hideDone = ref(false);
+const lkOnly = ref(false);
 const expanded = ref<Set<string>>(new Set());
+
+watch(() => route.query.q, (q) => { if (q) search.value = q as string; });
+
+const player = computed<PlayerState>(() => ({
+  level: game.level, faction: game.faction, completed: game.completed,
+  traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
+}));
+
+const factionTasks = computed(() => (tasks.value ?? []).filter((t) => factionMatch(t.factionName, game.faction)));
+
+const traders = computed(() => {
+  const m = new Map<string, string | null>();
+  for (const t of factionTasks.value) if (t.trader) m.set(t.trader.name, t.trader.imageLink);
+  return [...m.entries()].map(([name, img]) => ({ name, img })).sort((a, b) => a.name.localeCompare(b.name));
+});
+const mapOpts = computed(() => {
+  const s = new Set<string>();
+  for (const t of factionTasks.value) if (t.map) s.add(t.map.name);
+  return [{ value: '', label: 'Toutes les cartes' }, ...[...s].sort().map((m) => ({ value: m, label: m }))];
+});
+
+interface Row { task: Task; state: 'done' | 'available' | 'locked'; lockReasons: string[]; missing: { id: string; name: string }[]; neg: { trader: string; standing: number }[] }
+
+const rows = computed<Row[]>(() => {
+  const q = search.value.trim().toLowerCase();
+  return factionTasks.value
+    .map((task) => {
+      const info = taskInfo(task, player.value);
+      return { task, state: info.state, lockReasons: info.lockReasons, missing: info.missingPrereqs, neg: negativeRep(task) };
+    })
+    .filter((r) => {
+      if (trader.value && r.task.trader?.name !== trader.value) return false;
+      if (mapFilter.value && r.task.map?.name !== mapFilter.value) return false;
+      if (kappaOnly.value && !r.task.kappaRequired) return false;
+      if (lkOnly.value && !r.task.lightkeeperRequired) return false;
+      if (stateFilter.value !== 'all' && r.state !== stateFilter.value) return false;
+      if (q && !r.task.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+});
+
+const counts = computed(() => {
+  const all = factionTasks.value.map((t) => taskInfo(t, player.value).state);
+  return { available: all.filter((s) => s === 'available').length, done: all.filter((s) => s === 'done').length, total: all.length };
+});
 
 function toggleExpand(id: string) {
   expanded.value.has(id) ? expanded.value.delete(id) : expanded.value.add(id);
   expanded.value = new Set(expanded.value);
 }
-
-const factionTasks = computed(() =>
-  (tasks.value ?? []).filter((t) => !t.factionName || t.factionName === 'Any' || t.factionName === game.faction),
-);
-
-const traders = computed(() => {
-  const map = new Map<string, string | null>();
-  for (const t of factionTasks.value) if (t.trader) map.set(t.trader.name, t.trader.imageLink);
-  return [...map.entries()].map(([name, img]) => ({ name, img })).sort((a, b) => a.name.localeCompare(b.name));
-});
-
-const mapNames = computed(() => {
-  const s = new Set<string>();
-  for (const t of factionTasks.value) if (t.map) s.add(t.map.name);
-  return [...s].sort();
-});
-
-const filtered = computed(() => {
-  const q = search.value.trim().toLowerCase();
-  return factionTasks.value.filter((t) => {
-    if (trader.value && t.trader?.name !== trader.value) return false;
-    if (mapFilter.value && t.map?.name !== mapFilter.value) return false;
-    if (kappaOnly.value && !t.kappaRequired) return false;
-    if (hideDone.value && game.isDone(t.id)) return false;
-    if (q && !t.name.toLowerCase().includes(q)) return false;
-    return true;
-  });
-});
-
-const doneInView = computed(() => filtered.value.filter((t) => game.isDone(t.id)).length);
-
 function reqItems(t: Task) {
   const out: { icon: string | null; name: string; count: number; fir: boolean }[] = [];
-  for (const o of t.objectives) {
-    if (o.items?.length) for (const it of o.items) out.push({ icon: it.iconLink, name: it.shortName || it.name, count: o.count ?? 1, fir: !!o.foundInRaid });
-  }
+  for (const o of t.objectives) if (o.items?.length) for (const it of o.items) out.push({ icon: it.iconLink, name: it.shortName || it.name, count: o.count ?? 1, fir: !!o.foundInRaid });
   return out;
 }
+const hasFir = (t: Task) => t.objectives.some((o) => o.foundInRaid && o.items?.length);
 function reqKeys(t: Task) {
   const out: { icon: string | null; name: string }[] = [];
-  for (const o of t.objectives) if (o.requiredKeys?.length) for (const grp of o.requiredKeys) for (const k of grp) out.push({ icon: k.iconLink, name: k.shortName || k.name });
+  for (const o of t.objectives) for (const grp of o.requiredKeys ?? []) for (const k of grp) out.push({ icon: k.iconLink, name: k.shortName || k.name });
   return out;
 }
+
+const stateOpts = [
+  { value: 'available', label: 'Disponibles' },
+  { value: 'all', label: 'Toutes' },
+  { value: 'done', label: 'Faites' },
+];
 </script>
 
 <template>
-  <section>
-    <span class="kick">Module 02 — Progression</span>
-    <h1 class="title">Quêtes & objectifs</h1>
-    <p class="lead">Toutes les quêtes des marchands, filtrables. Coche-les au fur et à mesure — ta progression est sauvegardée localement.</p>
+  <section class="view">
+    <span class="kicker">Progression</span>
+    <h1 class="page-title">Quêtes & objectifs</h1>
+    <p class="lead">
+      « Available Now » : seulement les quêtes dont tu remplis les prérequis et le niveau, pour ta faction.
+      Coche par objectif — la progression est sauvegardée localement.
+    </p>
 
-    <Spinner v-if="loading" label="CHARGEMENT DES QUÊTES…" />
+    <Spinner v-if="loading" block label="Chargement des quêtes…" />
     <p v-else-if="error" class="err">Erreur API : {{ error }}</p>
 
     <template v-else>
       <div class="toolbar">
-        <input v-model="search" class="field" placeholder="Rechercher une quête…" style="min-width: 220px" />
-        <select v-model="mapFilter" class="field">
-          <option :value="null">Toutes les cartes</option>
-          <option v-for="m in mapNames" :key="m" :value="m">{{ m }}</option>
-        </select>
-        <label class="toggle"><input type="checkbox" v-model="kappaOnly" /> Kappa uniquement</label>
-        <label class="toggle"><input type="checkbox" v-model="hideDone" /> Masquer complétées</label>
-        <span class="stat" style="margin-left: auto"><b>{{ doneInView }}</b>/{{ filtered.length }} faites</span>
+        <input v-model="search" class="search-field" placeholder="Rechercher une quête…" />
+        <div class="map-cb"><Combobox v-model="mapFilter" :options="mapOpts" size="sm" /></div>
+        <SegmentedControl v-model="stateFilter" :options="stateOpts" size="sm" />
+        <Chip :active="kappaOnly" @click="kappaOnly = !kappaOnly">Kappa</Chip>
+        <Chip :active="lkOnly" @click="lkOnly = !lkOnly">Lightkeeper</Chip>
+        <div class="spacer" />
+        <Stat tone="accent" :value="counts.available">faisables</Stat>
+        <Stat :value="`${counts.done}/${counts.total}`">faites</Stat>
       </div>
 
-      <div class="chips" style="margin-bottom: 14px">
-        <button class="chip" :class="{ on: !trader }" @click="trader = null">Tous</button>
-        <button v-for="t in traders" :key="t.name" class="chip" :class="{ on: trader === t.name }" @click="trader = t.name">
-          <img v-if="t.img" :src="t.img" :alt="t.name" />{{ t.name }}
-        </button>
+      <div class="traderchips">
+        <Chip :active="!trader" @click="trader = null">Tous</Chip>
+        <Chip v-for="t in traders" :key="t.name" :active="trader === t.name" @click="trader = t.name">
+          <template #icon><img v-if="t.img" :src="t.img" :alt="t.name" /></template>{{ t.name }}
+        </Chip>
       </div>
 
       <div class="list">
-        <article v-for="t in filtered" :key="t.id" class="q" :class="{ done: game.isDone(t.id) }">
-          <header @click="toggleExpand(t.id)">
-            <input
-              type="checkbox"
-              :checked="game.isDone(t.id)"
-              @click.stop="game.toggleDone(t.id)"
+        <Card
+          v-for="r in rows"
+          :key="r.task.id"
+          tone="raised"
+          :pad="false"
+          class="q"
+          :class="{ done: r.state === 'done', locked: r.state === 'locked' }"
+        >
+          <header class="q-head" @click="toggleExpand(r.task.id)">
+            <button
               class="chk"
-            />
-            <img v-if="t.trader?.imageLink" :src="t.trader.imageLink" class="portrait" :alt="t.trader?.name" />
+              :class="{ on: game.isDone(r.task.id) }"
+              :aria-label="game.isDone(r.task.id) ? 'Marquer non faite' : 'Marquer faite'"
+              @click.stop="game.toggleDone(r.task.id)"
+            >{{ game.isDone(r.task.id) ? '✓' : '' }}</button>
+            <img v-if="r.task.trader?.imageLink" :src="r.task.trader.imageLink" class="portrait" :alt="r.task.trader?.name" />
             <div class="q-main">
-              <div class="q-name">{{ t.name }}</div>
+              <div class="q-name">{{ r.task.name }}</div>
               <div class="q-sub">
-                <span>{{ t.trader?.name }}</span>
-                <span v-if="t.map">· {{ t.map.name }}</span>
-                <span v-if="t.minPlayerLevel">· niv. {{ t.minPlayerLevel }}</span>
-                <span v-if="t.experience">· {{ t.experience.toLocaleString('fr-FR') }} XP</span>
+                <span>{{ r.task.trader?.name }}</span>
+                <span v-if="r.task.map">· {{ r.task.map.name }}</span>
+                <span v-if="r.task.minPlayerLevel">· niv. {{ r.task.minPlayerLevel }}</span>
+                <span v-if="r.task.experience" class="num">· {{ r.task.experience.toLocaleString('fr-FR') }} XP</span>
               </div>
             </div>
             <div class="q-badges">
-              <span v-if="t.kappaRequired" class="badge b-kappa">Kappa</span>
-              <span v-if="t.lightkeeperRequired" class="badge b-lk">Lightkeeper</span>
+              <Badge v-if="r.state === 'available'" variant="good">dispo</Badge>
+              <Badge v-else-if="r.state === 'locked'" variant="info">verrouillée</Badge>
+              <Badge v-if="r.task.kappaRequired" variant="kappa">Kappa</Badge>
+              <Badge v-if="r.task.lightkeeperRequired" variant="lk">LK</Badge>
+              <Badge v-for="n in r.neg" :key="n.trader" variant="danger">{{ n.standing }} {{ n.trader }}</Badge>
             </div>
-            <span class="caret">{{ expanded.has(t.id) ? '–' : '+' }}</span>
+            <span class="caret">{{ expanded.has(r.task.id) ? '−' : '+' }}</span>
           </header>
 
-          <div v-if="expanded.has(t.id)" class="q-body">
-            <div v-if="t.taskRequirements?.some((r) => r.task)" class="prereq">
-              <span class="kick">Prérequis</span>
-              <span>{{ t.taskRequirements!.filter((r) => r.task).map((r) => r.task!.name).join(' · ') }}</span>
+          <div v-if="expanded.has(r.task.id)" class="q-body">
+            <div v-if="r.state === 'locked' && r.lockReasons.length" class="lockbox">
+              <span class="kicker">Verrouillée</span>
+              <div class="lockreasons">
+                <Badge v-for="lr in r.lockReasons" :key="lr" variant="info">{{ lr }}</Badge>
+              </div>
+              <div v-if="r.missing.length" class="prereq">Après : {{ r.missing.map((m) => m.name).join(' · ') }}</div>
             </div>
 
-            <span class="kick">Objectifs</span>
+            <div v-if="hasFir(r.task)" class="firwarn">
+              ⚠ Objets en <b>Found in Raid</b> — porte-les dans ton rig, <b>jamais</b> dans le conteneur sécurisé (ça détruit le FiR).
+            </div>
+
+            <span class="kicker">Objectifs</span>
             <ul class="obj">
-              <li v-for="o in t.objectives" :key="o.id" :class="{ opt: o.optional }">
-                {{ o.description }}<span v-if="o.optional" class="opttag">optionnel</span>
-                <span v-if="o.maps?.length" class="onmap">[{{ o.maps.map((m) => m.name).join(', ') }}]</span>
+              <li v-for="o in r.task.objectives" :key="o.id" :class="{ opt: o.optional, checked: game.objDone(o.id) }">
+                <button class="objchk" :class="{ on: game.objDone(o.id) }" @click="game.toggleObjective(o.id)">{{ game.objDone(o.id) ? '✓' : '' }}</button>
+                <span class="objtext">
+                  {{ o.description }}
+                  <span v-if="o.optional" class="opttag">optionnel</span>
+                  <span v-if="o.maps?.length" class="onmap">[{{ o.maps.map((m) => m.name).join(', ') }}]</span>
+                </span>
               </li>
             </ul>
 
-            <template v-if="reqItems(t).length">
-              <span class="kick">Items requis</span>
+            <template v-if="reqItems(r.task).length">
+              <span class="kicker">Items requis</span>
               <div class="items">
-                <div v-for="(it, i) in reqItems(t)" :key="i" class="it">
-                  <img v-if="it.icon" :src="it.icon" class="icon sm" :alt="it.name" />
-                  <div><b>{{ it.count }}×</b> {{ it.name }} <span v-if="it.fir" class="badge b-fir">FiR</span></div>
+                <div v-for="(it, i) in reqItems(r.task)" :key="i" class="it">
+                  <IconBox :src="it.icon" :size="30" />
+                  <div><b class="num">{{ it.count }}×</b> {{ it.name }} <Badge v-if="it.fir" variant="fir">FiR</Badge></div>
                 </div>
               </div>
             </template>
 
-            <template v-if="reqKeys(t).length">
-              <span class="kick">Clés utiles</span>
+            <template v-if="reqKeys(r.task).length">
+              <span class="kicker">Clés utiles</span>
               <div class="items">
-                <div v-for="(k, i) in reqKeys(t)" :key="i" class="it">
-                  <img v-if="k.icon" :src="k.icon" class="icon sm" :alt="k.name" /><div>{{ k.name }}</div>
+                <div v-for="(k, i) in reqKeys(r.task)" :key="i" class="it">
+                  <IconBox :src="k.icon" :size="30" /><div>{{ k.name }}</div>
                 </div>
               </div>
             </template>
 
-            <a v-if="t.wikiLink" :href="t.wikiLink" target="_blank" class="wiki">↗ Guide wiki détaillé</a>
+            <a v-if="r.task.wikiLink" :href="r.task.wikiLink" target="_blank" class="wiki">↗ Guide wiki détaillé</a>
           </div>
-        </article>
+        </Card>
       </div>
-      <p v-if="!filtered.length" class="muted" style="margin-top: 16px">Aucune quête pour ces filtres.</p>
+      <EmptyState v-if="!rows.length" icon="✓" title="Aucune quête pour ces filtres">
+        Change l'état ou les filtres — ou monte de niveau pour débloquer la suite.
+      </EmptyState>
     </template>
   </section>
 </template>
 
 <style scoped>
-.list { display: flex; flex-direction: column; gap: 8px; }
-.q { border: 1px solid var(--line); border-radius: var(--radius); background: linear-gradient(180deg, var(--panel), #11140d); transition: 0.15s var(--tap); }
-.q:hover { border-color: var(--line2); }
-.q.done { opacity: 0.55; }
-.q header { display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; }
-.chk { width: 17px; height: 17px; accent-color: var(--acid); flex: 0 0 auto; cursor: pointer; }
-.portrait { width: 34px; height: 34px; border-radius: 2px; object-fit: cover; border: 1px solid var(--line2); background: #000; flex: 0 0 auto; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+.search-field {
+  min-width: 220px; flex: 0 1 auto;
+  background: var(--canvas); border: 1px solid var(--hairline-2); border-radius: var(--r-sm);
+  color: var(--ink); padding: 9px 13px; font-size: 14px;
+}
+.search-field:focus { outline: none; border-color: var(--accent-dim); box-shadow: 0 0 0 3px var(--accent-soft); }
+.map-cb { width: 200px; }
+.spacer { flex: 1; }
+.traderchips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.list { display: flex; flex-direction: column; gap: 9px; }
+
+.q { transition: opacity var(--t2) var(--ease), border-color var(--t1) var(--ease); }
+.q.done { opacity: 0.5; }
+.q.locked { opacity: 0.82; }
+.q-head { display: flex; align-items: center; gap: 13px; padding: 13px 16px; cursor: pointer; }
+.chk {
+  width: 22px; height: 22px; flex: 0 0 auto; border-radius: var(--r-xs);
+  border: 1.5px solid var(--hairline-2); background: var(--canvas); color: var(--ink-on-accent);
+  cursor: pointer; display: grid; place-items: center; font-size: 13px; font-weight: 700; transition: all var(--t1) var(--ease);
+}
+.chk:hover { border-color: var(--accent-dim); }
+.chk.on { background: var(--accent); border-color: var(--accent); }
+.portrait { width: 36px; height: 36px; border-radius: var(--r-xs); object-fit: cover; border: 1px solid var(--hairline-2); background: #000; flex: 0 0 auto; }
 .q-main { flex: 1; min-width: 0; }
-.q-name { font-family: var(--cond); font-weight: 600; font-size: 16px; letter-spacing: 0.3px; }
+.q-name { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; }
 .q.done .q-name { text-decoration: line-through; }
-.q-sub { font-family: var(--mono); font-size: 10.5px; color: var(--muted); display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
-.q-badges { display: flex; gap: 5px; flex: 0 0 auto; }
-.caret { font-family: var(--mono); color: var(--dim); width: 14px; text-align: center; }
-.q-body { padding: 4px 16px 16px 52px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
-.q-body .kick { margin-top: 10px; }
-.prereq { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--amber); }
-.obj { margin: 2px 0 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px; }
-.obj li { font-size: 13px; line-height: 1.45; }
-.obj li.opt { color: var(--muted); }
-.opttag { font-family: var(--mono); font-size: 9px; color: var(--dim); border: 1px solid var(--line2); padding: 1px 4px; border-radius: 2px; margin-left: 6px; text-transform: uppercase; }
-.onmap { color: var(--cyan); font-family: var(--mono); font-size: 10.5px; margin-left: 6px; }
+.q-sub { font-size: 12.5px; color: var(--ink-3); display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
+.q-badges { display: flex; gap: 5px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; max-width: 280px; }
+.caret { font-family: var(--font-mono); color: var(--ink-3); width: 16px; text-align: center; font-size: 16px; }
+
+.q-body { padding: 4px 16px 18px 51px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 8px; }
+.q-body .kicker { margin-top: 8px; }
+.lockbox { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 10px 12px; margin-top: 10px; }
+.lockreasons { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.prereq { font-size: 12.5px; color: var(--amber); }
+.firwarn { background: var(--amber-soft); border: 1px solid #5c4517; border-radius: var(--r-sm); padding: 9px 12px; font-size: 12.5px; color: var(--ink); margin-top: 10px; }
+.obj { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.obj li { display: flex; gap: 9px; align-items: flex-start; font-size: 14px; line-height: 1.45; }
+.obj li.opt .objtext { color: var(--ink-3); }
+.obj li.checked .objtext { color: var(--ink-3); text-decoration: line-through; }
+.objchk {
+  width: 18px; height: 18px; flex: 0 0 auto; margin-top: 1px; border-radius: 5px;
+  border: 1.5px solid var(--hairline-2); background: var(--canvas); color: var(--ink-on-accent);
+  cursor: pointer; display: grid; place-items: center; font-size: 11px; font-weight: 700; transition: all var(--t1) var(--ease);
+}
+.objchk.on { background: var(--accent); border-color: var(--accent); }
+.objtext { flex: 1; }
+.opttag { font-family: var(--font-mono); font-size: 9px; color: var(--ink-3); border: 1px solid var(--hairline-2); padding: 1px 5px; border-radius: var(--r-xs); margin-left: 6px; text-transform: uppercase; }
+.onmap { color: var(--cyan); font-size: 12px; margin-left: 6px; }
 .items { display: flex; flex-wrap: wrap; gap: 8px; }
-.it { display: flex; align-items: center; gap: 8px; background: #11140d; border: 1px solid var(--line); border-radius: 2px; padding: 5px 9px 5px 5px; font-size: 12.5px; }
-.wiki { font-family: var(--mono); font-size: 11px; margin-top: 10px; }
-.err { color: var(--red); font-family: var(--mono); }
+.it { display: flex; align-items: center; gap: 9px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 6px 10px 6px 6px; font-size: 13px; }
+.wiki { font-size: 13px; margin-top: 8px; }
+.err { color: var(--red); font-family: var(--font-mono); }
+@media (max-width: 720px) { .q-badges { max-width: 140px; } .q-body { padding-left: 16px; } }
 </style>

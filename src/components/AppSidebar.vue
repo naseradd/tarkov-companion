@@ -1,37 +1,81 @@
 <script setup lang="ts">
 const nav = [
-  { to: '/cartes', ix: '01', label: 'Cartes', icon: '◎' },
-  { to: '/quetes', ix: '02', label: 'Quêtes', icon: '✓' },
-  { to: '/items', ix: '03', label: 'Items', icon: '▤' },
-  { to: '/hideout', ix: '04', label: 'Hideout', icon: '⌂' },
+  { to: '/', label: 'Dashboard', icon: '◧', end: true },
+  { to: '/cartes', label: 'Cartes', icon: '◎' },
+  { to: '/quetes', label: 'Quêtes', icon: '✓' },
+  { to: '/loot', label: 'Loot & Éco', icon: '₽' },
+  { to: '/gear', label: 'Gear', icon: '⌖' },
+  { to: '/hideout', label: 'Hideout', icon: '⌂' },
 ];
 </script>
 
 <template>
   <nav class="side">
-    <RouterLink v-for="n in nav" :key="n.to" :to="n.to" class="navbtn" active-class="on">
+    <RouterLink
+      v-for="n in nav"
+      :key="n.to"
+      :to="n.to"
+      class="navbtn"
+      active-class="on"
+      :exact-active-class="n.end ? 'on' : ''"
+    >
       <span class="ic">{{ n.icon }}</span>
-      <span class="lbl"><span class="ix">{{ n.ix }}</span>{{ n.label }}</span>
+      <span class="lbl">{{ n.label }}</span>
     </RouterLink>
     <div class="foot">
-      Données : API GraphQL<br />tarkov.dev (open source).<br />Cartes : assets.tarkov.dev.
+      <span class="kicker">Data</span>
+      tarkov.dev · GraphQL open source<br />Cartes : assets.tarkov.dev
     </div>
   </nav>
 </template>
 
 <style scoped>
-.side { flex: 0 0 206px; border-right: 1px solid var(--line); background: #0e110a; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
-.navbtn { display: flex; align-items: center; gap: 11px; text-align: left; cursor: pointer; border-left: 2px solid transparent; color: var(--muted); font-family: var(--cond); font-weight: 600; font-size: 15px; letter-spacing: 0.5px; text-transform: uppercase; padding: 11px 12px; border-radius: 2px; transition: 0.14s var(--tap); }
-.navbtn .ic { font-size: 15px; width: 18px; text-align: center; color: var(--dim); transition: 0.14s; }
-.navbtn .ix { font-family: var(--mono); font-size: 10px; color: var(--dim); margin-right: 9px; }
-.navbtn:hover { background: #141810; color: var(--txt); }
-.navbtn.on { background: linear-gradient(90deg, rgba(200, 224, 33, 0.12), transparent); border-left-color: var(--acid); color: var(--acid); }
-.navbtn.on .ic { color: var(--acid); }
-.foot { margin-top: auto; font-family: var(--mono); font-size: 9px; color: var(--dim); line-height: 1.7; padding: 10px 12px; border-top: 1px solid var(--line); }
+.side {
+  flex: 0 0 218px;
+  border-right: 1px solid var(--hairline);
+  background: var(--surface);
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+.navbtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 15px;
+  padding: 11px 14px;
+  border-radius: var(--r-sm);
+  transition: all var(--t1) var(--ease);
+}
+.navbtn .ic { font-size: 16px; width: 20px; text-align: center; color: var(--ink-3); transition: color var(--t1) var(--ease); }
+.navbtn:hover { background: var(--surface-2); color: var(--ink); }
+.navbtn:hover .ic { color: var(--ink-2); }
+.navbtn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent-dim);
+}
+.navbtn.on .ic { color: var(--accent); }
+.foot {
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--ink-3);
+  line-height: 1.7;
+  padding: 14px;
+}
+.foot .kicker { display: block; margin-bottom: 4px; }
 @media (max-width: 720px) {
-  .side { flex-direction: row; flex: 0 0 auto; overflow-x: auto; padding: 8px; }
-  .navbtn { border-left: 0; border-bottom: 2px solid transparent; white-space: nowrap; }
-  .navbtn.on { border-bottom-color: var(--acid); }
+  .side { flex: 0 0 auto; flex-direction: row; overflow-x: auto; padding: 8px 10px; gap: 6px; border-right: none; border-bottom: 1px solid var(--hairline); }
+  .navbtn { padding: 8px 13px; white-space: nowrap; }
+  .navbtn .lbl { font-size: 14px; }
   .foot { display: none; }
 }
 </style>
