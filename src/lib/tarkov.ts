@@ -144,7 +144,7 @@ export interface GunProps {
   recoilHorizontal: number | null;
   fireRate: number | null;
   effectiveDistance: number | null;
-  defaultAmmo: { item?: { name: string } | null } | null;
+  defaultAmmo: { name: string; shortName: string } | null;
 }
 export interface GunItem {
   id: string; name: string; shortName: string; iconLink: string | null; wikiLink: string | null;
@@ -243,7 +243,7 @@ const Q_ARMOR = `{ items(types:[armor,rig], gameMode: regular){ id name shortNam
                 ... on ItemArmorSlotLocked{ nameId name zones class durability } } } } } }`;
 
 const Q_GUNS = `{ items(types:gun, gameMode: regular){ id name shortName iconLink wikiLink backgroundColor avg24hPrice
-  properties{ ... on ItemPropertiesWeapon{ caliber ergonomics recoilVertical recoilHorizontal fireRate effectiveDistance defaultAmmo{ item{ name } } } } } }`;
+  properties{ ... on ItemPropertiesWeapon{ caliber ergonomics recoilVertical recoilHorizontal fireRate effectiveDistance defaultAmmo{ name shortName } } } } }`;
 
 const Q_LOOT = `{ items(types:[barter,provisions,meds,container,keys,backpack], gameMode: regular){ id name shortName iconLink wikiLink backgroundColor width height
   basePrice avg24hPrice low24hPrice lastLowPrice changeLast48hPercent fleaMarketFee minLevelForFlea
