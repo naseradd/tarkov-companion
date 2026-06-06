@@ -111,23 +111,6 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
       </div>
     </Card>
 
-    <!-- SCAV -->
-    <Card class="block">
-      <span class="kicker">Scav & karma</span>
-      <div class="scav">
-        <div class="field-row">
-          <label>Karma Fence</label>
-          <input class="num-in num" type="number" step="0.1" :value="game.scav.karma"
-            @change="game.setScav({ karma: Number(($event.target as HTMLInputElement).value) })" />
-        </div>
-        <div class="field-row">
-          <label>Centre de renseignement (niv.)</label>
-          <input class="num-in num" type="number" min="0" max="3" :value="game.scav.intelLevel"
-            @change="game.setScav({ intelLevel: Number(($event.target as HTMLInputElement).value) })" />
-        </div>
-      </div>
-    </Card>
-
     <!-- QUÊTES + RESET -->
     <Card class="block">
       <span class="kicker">Quêtes & remise à zéro</span>
@@ -154,7 +137,7 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 .block { margin-bottom: 14px; }
 .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .hint { font-size: 12px; color: var(--ink-3); }
-.profile, .scav { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 14px; }
+.profile { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 14px; }
 .field-row { display: flex; align-items: center; gap: 12px; }
 .field-row label { font-size: 13.5px; color: var(--ink-2); min-width: 80px; }
 

@@ -11,7 +11,6 @@ const LS = {
   done: 'eft.completedTasks',
   objDone: 'eft.objectivesDone',
   density: 'eft.density',
-  scav: 'eft.scav',
 };
 
 function loadSet(key: string): Set<string> {
@@ -30,15 +29,6 @@ function loadRecord(key: string): Record<string, number> {
     return {};
   }
 }
-function loadScav(): { lastTs: number | null; karma: number; intelLevel: number } {
-  try {
-    const raw = localStorage.getItem(LS.scav);
-    return raw ? JSON.parse(raw) : { lastTs: null, karma: 0, intelLevel: 0 };
-  } catch {
-    return { lastTs: null, karma: 0, intelLevel: 0 };
-  }
-}
-
 export const FLEA_LEVEL = 15;
 
 export const useGameStore = defineStore('game', {
@@ -50,7 +40,6 @@ export const useGameStore = defineStore('game', {
     completed: loadSet(LS.done), // task IDs
     objectivesDone: loadSet(LS.objDone), // objective IDs
     density: (localStorage.getItem(LS.density) as Density) || ('regular' as Density),
-    scav: loadScav(),
   }),
 
   getters: {
@@ -95,13 +84,6 @@ export const useGameStore = defineStore('game', {
       this.density = d;
       localStorage.setItem(LS.density, d);
     },
-    setScav(patch: Partial<{ lastTs: number | null; karma: number; intelLevel: number }>) {
-      this.scav = { ...this.scav, ...patch };
-      localStorage.setItem(LS.scav, JSON.stringify(this.scav));
-    },
-    stampScavRun() {
-      this.setScav({ lastTs: Date.now() });
-    },
     /** New wipe / prestige : reset progression (garde la faction + density). */
     resetProgress() {
       this.level = 1;
@@ -109,12 +91,10 @@ export const useGameStore = defineStore('game', {
       this.hideoutBuilt = {};
       this.completed = new Set();
       this.objectivesDone = new Set();
-      this.scav = { lastTs: null, karma: 0, intelLevel: 0 };
       localStorage.removeItem(LS.done);
       localStorage.removeItem(LS.objDone);
       localStorage.removeItem(LS.traders);
       localStorage.removeItem(LS.hideout);
-      localStorage.removeItem(LS.scav);
       localStorage.setItem(LS.level, '1');
     },
   },

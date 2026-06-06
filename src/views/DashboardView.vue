@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchTasks, fetchTraders, fetchHideout, type Task, type TraderFull, type HideoutStation } from '@/lib/tarkov';
 import { nextBottlenecks, kappaProgress, lightkeeperProgress, hoardList, wipePhase, type PlayerState } from '@/lib/progression';
-import { fromNow } from '@/lib/format';
 import Card from '@/components/ui/Card.vue';
 import Badge from '@/components/ui/Badge.vue';
 import ProgressRing from '@/components/ui/ProgressRing.vue';
@@ -30,31 +29,6 @@ const bottlenecks = computed(() => nextBottlenecks(tasks.data.value ?? [], trade
 const hoard = computed(() => hoardList(tasks.data.value ?? [], hideout.data.value ?? [], player.value).slice(0, 12));
 
 const phaseVariant = computed(() => (phase.value.phase === 'early' ? 'good' : phase.value.phase === 'mid' ? 'amber' : 'lk'));
-
-/* Scav cooldown */
-const now = ref(Date.now());
-let timer: number | undefined;
-onMounted(() => { timer = window.setInterval(() => (now.value = Date.now()), 20000); });
-onBeforeUnmount(() => clearInterval(timer));
-
-function baseCooldownMin(karma: number): number {
-  if (karma >= 6) return 5;
-  if (karma >= 3) return 10;
-  if (karma >= 0) return 20;
-  return 60;
-}
-const scavCooldown = computed(() => {
-  const k = game.scav.karma;
-  const intelCut = game.scav.intelLevel >= 3 ? 0.8 : game.scav.intelLevel >= 1 ? 0.85 : 1;
-  return Math.round(baseCooldownMin(k) * intelCut);
-});
-const scavStatus = computed(() => {
-  if (!game.scav.lastTs) return { ready: true, text: 'Prêt — aucun run enregistré' };
-  const elapsed = (now.value - game.scav.lastTs) / 60000;
-  const remaining = scavCooldown.value - elapsed;
-  if (remaining <= 0) return { ready: true, text: `Prêt (parti ${fromNow(game.scav.lastTs, now.value)})` };
-  return { ready: false, text: `Prêt dans ~${Math.ceil(remaining)} min` };
-});
 
 const confirmReset = ref(false);
 function doReset() { game.resetProgress(); confirmReset.value = false; }
@@ -93,41 +67,26 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
         </Card>
       </div>
 
-      <div class="cols">
-        <!-- Progress rings -->
-        <Card class="rings">
-          <span class="kicker">Objectifs de fin de wipe</span>
-          <div class="ringrow">
-            <div class="ringbox">
-              <ProgressRing :value="kappa.pct" :size="104">
-                <div class="ring-pct num">{{ kappa.pct }}%</div>
-                <div class="ring-sub">Kappa</div>
-              </ProgressRing>
-              <div class="ring-cap num">{{ kappa.done }} / {{ kappa.total }}</div>
-            </div>
-            <div class="ringbox">
-              <ProgressRing :value="lk.pct" :size="104" color="var(--blue)">
-                <div class="ring-pct num">{{ lk.pct }}%</div>
-                <div class="ring-sub">Lightkeeper</div>
-              </ProgressRing>
-              <div class="ring-cap num">{{ lk.done }} / {{ lk.total }}</div>
-            </div>
+      <!-- Progress rings -->
+      <Card class="rings">
+        <span class="kicker">Objectifs de fin de wipe</span>
+        <div class="ringrow">
+          <div class="ringbox">
+            <ProgressRing :value="kappa.pct" :size="104">
+              <div class="ring-pct num">{{ kappa.pct }}%</div>
+              <div class="ring-sub">Kappa</div>
+            </ProgressRing>
+            <div class="ring-cap num">{{ kappa.done }} / {{ kappa.total }}</div>
           </div>
-        </Card>
-
-        <!-- Scav -->
-        <Card class="scav">
-          <span class="kicker">Scav & karma</span>
-          <div class="scav-status" :class="{ ok: scavStatus.ready }">{{ scavStatus.text }}</div>
-          <button class="scav-btn" @click="game.stampScavRun()">Je pars en Scav maintenant</button>
-          <div class="scav-inputs">
-            <label>Karma <input v-model.number="game.scav.karma" type="number" step="0.1" class="sip num" @change="game.setScav({ karma: game.scav.karma })" /></label>
-            <label>Intel N <input v-model.number="game.scav.intelLevel" type="number" min="0" max="3" class="sip num" @change="game.setScav({ intelLevel: game.scav.intelLevel })" /></label>
-            <span class="cd num">cooldown ~{{ scavCooldown }} min</span>
+          <div class="ringbox">
+            <ProgressRing :value="lk.pct" :size="104" color="var(--blue)">
+              <div class="ring-pct num">{{ lk.pct }}%</div>
+              <div class="ring-sub">Lightkeeper</div>
+            </ProgressRing>
+            <div class="ring-cap num">{{ lk.done }} / {{ lk.total }}</div>
           </div>
-          <p class="scav-tip">Ne tire jamais sur les Scavs (−karma). Extraction voiture/co-op = +0.25. Karma 6.0 → cooldown ~5 min + spawns keycard.</p>
-        </Card>
-      </div>
+        </div>
+      </Card>
 
       <!-- Hoard list -->
       <div class="hoard-head">
@@ -179,22 +138,12 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 .bar { height: 6px; background: var(--canvas); border-radius: var(--r-pill); margin-top: 10px; overflow: hidden; }
 .bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: var(--r-pill); transition: width var(--t3) var(--ease); }
 
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 24px; }
-.ringrow { display: flex; gap: 28px; justify-content: center; margin-top: 14px; }
+.rings { margin-bottom: 24px; }
+.ringrow { display: flex; gap: 40px; margin-top: 14px; flex-wrap: wrap; }
 .ringbox { text-align: center; }
 .ring-pct { font-family: var(--font-display); font-weight: 700; font-size: 20px; }
 .ring-sub { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.5px; }
 .ring-cap { font-size: 12px; color: var(--ink-2); margin-top: 8px; }
-
-.scav-status { font-size: 16px; font-weight: 600; margin: 12px 0 10px; color: var(--amber); }
-.scav-status.ok { color: var(--positive); }
-.scav-btn { width: 100%; background: var(--accent-soft); border: 1px solid var(--accent-dim); color: var(--accent); border-radius: var(--r-sm); padding: 9px; cursor: pointer; font-size: 13.5px; font-weight: 600; transition: all var(--t1) var(--ease); }
-.scav-btn:hover { background: var(--accent); color: var(--ink-on-accent); }
-.scav-inputs { display: flex; align-items: center; gap: 12px; margin: 12px 0 8px; }
-.scav-inputs label { font-size: 11px; color: var(--ink-3); display: flex; flex-direction: column; gap: 3px; }
-.sip { width: 64px; background: var(--canvas); border: 1px solid var(--hairline-2); border-radius: var(--r-sm); color: var(--ink); padding: 5px 8px; font-size: 13px; }
-.cd { margin-left: auto; font-size: 11.5px; color: var(--ink-3); align-self: flex-end; }
-.scav-tip { font-size: 12px; color: var(--ink-3); line-height: 1.5; margin: 6px 0 0; }
 
 .hoard-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
 .seeall { font-size: 13px; }
@@ -217,5 +166,5 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 .btn.danger { background: var(--red); color: #fff; }
 .btn.danger:hover { filter: brightness(1.1); }
 
-@media (max-width: 860px) { .cols { grid-template-columns: 1fr; } .hero { flex-direction: column; } }
+@media (max-width: 860px) { .hero { flex-direction: column; } }
 </style>

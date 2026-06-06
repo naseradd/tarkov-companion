@@ -4,7 +4,8 @@ import { useRoute } from 'vue-router';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchMaps, fetchTasks, type TarkovMap, type Task } from '@/lib/tarkov';
-import { mapDef } from '@/lib/maps';
+import { getMapData, providers, type ProviderId } from '@/lib/maps';
+import { distance } from '@/lib/format';
 import { isAvailable, type PlayerState } from '@/lib/progression';
 import TacticalMap, { type LayerState } from '@/components/TacticalMap.vue';
 import RoutePanel, { type ExtractFull, type SpawnPt } from '@/components/RoutePanel.vue';
@@ -12,6 +13,7 @@ import MapLegend from '@/components/MapLegend.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 import Card from '@/components/ui/Card.vue';
 import Chip from '@/components/ui/Chip.vue';
+import SegmentedControl from '@/components/ui/SegmentedControl.vue';
 import Stat from '@/components/ui/Stat.vue';
 import Badge from '@/components/ui/Badge.vue';
 import IconBox from '@/components/ui/IconBox.vue';
@@ -23,6 +25,16 @@ const { data: tasks } = useResource<Task[]>('tasks', fetchTasks);
 
 const selected = ref<string | null>(null);
 const layers = ref<LayerState>({ spawns: true, extracts: true, quests: true, transits: false });
+const provider = ref<ProviderId>((localStorage.getItem('eft.mapProvider') as ProviderId) || 'svg');
+watch(provider, (v) => localStorage.setItem('eft.mapProvider', v));
+
+/** Nettoie les zoneName en UUID/hash → libellé lisible. */
+function cleanSpawn(zoneName: string | null, i: number): string {
+  const z = (zoneName ?? '').trim();
+  if (!z || /^[{(]?[0-9a-f]{8}-/i.test(z) || /^[0-9a-f]{16,}$/i.test(z) || /^[0-9a-f-]{20,}$/i.test(z)) return `Spawn ${i + 1}`;
+  const pretty = z.replace(/^Zone[_ ]?/i, '').replace(/[_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return pretty || `Spawn ${i + 1}`;
+}
 
 const mapList = computed(() => {
   const seen = new Set<string>();
@@ -45,8 +57,11 @@ watch(
 );
 
 const current = computed(() => mapList.value.find((m) => m.normalizedName === selected.value) ?? null);
-const def = computed(() => (current.value ? mapDef(current.value.normalizedName) : null));
-const hasImage = computed(() => !!def.value);
+const data = computed(() => (current.value ? getMapData(current.value.normalizedName) : null));
+const hasData = computed(() => !!data.value);
+const availProviders = computed(() => (data.value ? providers(data.value) : []));
+const providerOpts = computed(() => availProviders.value.map((p) => ({ value: p.id, label: p.label })));
+watch(availProviders, (ps) => { if (ps.length && !ps.some((p) => p.id === provider.value)) provider.value = ps[0].id; }, { immediate: true });
 
 const player = computed<PlayerState>(() => ({
   level: game.level,
@@ -67,7 +82,7 @@ const spawns = computed<SpawnPt[]>(() => {
   });
   if (!list.length) list = m.spawns.filter((s) => cats(s).includes('player'));
   if (!list.length) list = m.spawns;
-  return list.filter((s) => s.position).map((s, i) => ({ x: s.position.x, z: s.position.z, label: s.zoneName || `Zone ${i + 1}` }));
+  return list.filter((s) => s.position).map((s, i) => ({ x: s.position.x, z: s.position.z, label: cleanSpawn(s.zoneName, i) }));
 });
 
 function normFaction(f: string | null): string | null {
@@ -132,6 +147,20 @@ const selectedSpawn = ref(0);
 const selectedExtract = ref<string | null>(null);
 watch([selected, () => game.faction], () => { selectedSpawn.value = 0; selectedExtract.value = null; });
 
+// Destination effective tracée sur la carte : sélection explicite, sinon la plus proche
+const effectiveExtract = computed(() => {
+  if (selectedExtract.value) return selectedExtract.value;
+  const sp = spawns.value[selectedSpawn.value];
+  if (!sp) return null;
+  let best: string | null = null, bd = Infinity;
+  for (const e of extracts.value) {
+    if (!e.valid) continue;
+    const d = distance(sp.x, sp.z, e.x, e.z);
+    if (d < bd) { bd = d; best = e.name; }
+  }
+  return best;
+});
+
 const validExtractCount = computed(() => extracts.value.filter((e) => e.valid).length);
 const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts.value.length, quests: questMarkers.value.length, transits: current.value?.transits.filter((t) => t.position).length ?? 0 }));
 </script>
@@ -157,23 +186,29 @@ const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts
 
       <div v-if="current" class="grid">
         <div class="mapcol">
+          <div v-if="providerOpts.length > 1" class="map-toolbar">
+            <span class="tb-lbl">Plan</span>
+            <SegmentedControl v-model="provider" :options="providerOpts" size="sm" />
+          </div>
           <TacticalMap
-            :def="def"
+            v-if="hasData"
+            :data="data"
             :spawns="spawns"
             :extracts="extracts"
             :transits="current.transits.filter((t) => t.position).map((t) => ({ x: t.position.x, z: t.position.z, label: t.description || '' }))"
             :quests="questMarkers"
             :selected-spawn="selectedSpawn"
-            :selected-extract="selectedExtract"
+            :selected-extract="effectiveExtract"
             :layers="layers"
+            :provider="provider"
             @pick-spawn="selectedSpawn = $event"
             @pick-extract="selectedExtract = $event"
           />
-          <MapLegend :layers="layers" :counts="counts" @update:layers="layers = $event" />
-          <p v-if="!hasImage" class="note">
-            Pas d'image vectorielle pour cette carte — vue schématique (positions relatives exactes).
-            Carte détaillée : <a :href="'https://tarkov.dev/map/' + current.normalizedName" target="_blank">tarkov.dev</a>.
+          <p v-else class="note">
+            Pas de plan interactif pour cette carte.
+            Voir : <a :href="'https://tarkov.dev/map/' + current.normalizedName" target="_blank">tarkov.dev/map/{{ current.normalizedName }}</a>.
           </p>
+          <MapLegend v-if="hasData" :layers="layers" :counts="counts" @update:layers="layers = $event" />
         </div>
 
         <aside class="side">
@@ -218,6 +253,8 @@ const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts
 .mapchips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .grid { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start; }
 .mapcol { display: flex; flex-direction: column; }
+.map-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.tb-lbl { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink-3); }
 .mapcol :deep(.map) { height: 62vh; }
 .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 8px; }
 .meta { display: flex; gap: 8px; flex-wrap: wrap; }

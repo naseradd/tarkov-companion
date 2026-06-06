@@ -1,76 +1,61 @@
-// Définitions de cartes : image SVG réelle (hébergée par tarkov.dev) + bornes en
-// coordonnées de jeu pour projeter spawns/extractions dessus.
+// Données de cartes (provenant du config statique tarkov.dev / the-hideout).
 //
-// Les `bounds` ([[x0,z0],[x1,z1]]) et `rotation` proviennent du jeu de données
-// communautaire (TarkovTracker/tarkovdata), le même que tarkov.dev utilise.
-// On mappe linéairement (x,z) -> pixels dans ce repère : comme le SVG est tracé
-// dans le MÊME repère, les marqueurs s'alignent par construction.
-//
-// Si une carte apparaît miroir (est/ouest ou nord/sud inversés), il suffit de
-// passer flipX/flipY à true sur sa définition — un seul caractère à changer.
+// On reprend le modèle de projection tarkov.dev : un CRS Leaflet custom construit
+// à partir de `transform` (échelle/offset jeu→pixel) + `coordinateRotation`. Les
+// marqueurs sont placés en coordonnées de jeu directes (lat = z, lng = x) et le
+// CRS s'occupe de la projection. Conséquence : le SVG "Abstrait" ET les tuiles
+// raster "Satellite" partagent exactement les mêmes bounds → tout s'aligne par
+// construction, peu importe la source de fond choisie.
 
-export const SVG_BASE = 'https://assets.tarkov.dev/maps/svg/';
-export const MAP_VHEIGHT = 1000; // hauteur virtuelle du canvas Leaflet (CRS.Simple)
-
-export interface MapDef {
-  file: string;
-  rotation: number; // orientation native du SVG (référence ; non appliquée à l'alignement)
+export interface MapData {
+  normalizedName: string;
   bounds: [[number, number], [number, number]]; // [[x0,z0],[x1,z1]] coins en coords jeu
-  flipX?: boolean;
-  flipY?: boolean;
+  transform: [number, number, number, number]; // [scaleX, offsetX, scaleZ, offsetZ]
+  rotation: number; // coordinateRotation (deg)
+  tileSize: number;
+  minZoom: number;
+  maxZoom: number;
+  svgPath: string | null; // fond vectoriel ("Abstrait")
+  tilePath: string | null; // tuiles raster ("Satellite")
 }
 
-const DEFS: Record<string, MapDef> = {
-  factory:             { file: 'Factory.svg',         rotation: 90,  bounds: [[-67, 69], [76.6, -65.5]] },
-  customs:             { file: 'Customs.svg',         rotation: 180, bounds: [[698, -307], [-371, 237]] },
-  woods:               { file: 'Woods.svg',           rotation: 180, bounds: [[650, -945], [-695, 470]] },
-  shoreline:           { file: 'Shoreline.svg',       rotation: 180, bounds: [[506, -405], [-1060, 618]] },
-  interchange:         { file: 'Interchange.svg',     rotation: 180, bounds: [[530, -439], [-364, 452]] },
-  'the-lab':           { file: 'Labs.svg',            rotation: 270, bounds: [[-91, -477], [-287, -193]] },
-  reserve:             { file: 'Reserve.svg',         rotation: 180, bounds: [[289, -338], [-303, 336]] },
-  lighthouse:          { file: 'Lighthouse.svg',      rotation: 180, bounds: [[515, -1000], [-545, 725]] },
-  'streets-of-tarkov': { file: 'StreetsOfTarkov.svg', rotation: 180, bounds: [[323, -317], [-280, 549]] },
-  'ground-zero':       { file: 'GroundZero.svg',      rotation: 180, bounds: [[249, -124], [-99, 364]] },
+export type ProviderId = 'svg' | 'tiles';
+export interface Provider { id: ProviderId; label: string; }
+
+const SVG = 'https://assets.tarkov.dev/maps/svg/';
+const A = 'https://assets.tarkov.dev/maps/';
+
+const MAPS: Record<string, MapData> = {
+  customs: { normalizedName: 'customs', bounds: [[698, -307], [-372, 237]], transform: [0.239, 168.65, 0.239, 136.35], rotation: 180, tileSize: 256, minZoom: 2, maxZoom: 6, svgPath: SVG + 'Customs.svg', tilePath: A + 'customs_0.16/main/{z}/{x}/{y}.png' },
+  factory: { normalizedName: 'factory', bounds: [[77, -64.5], [-65.5, 67.4]], transform: [1.629, 119.9, 1.629, 139.3], rotation: 90, tileSize: 256, minZoom: 1, maxZoom: 6, svgPath: SVG + 'Factory.svg', tilePath: A + 'factory/main/{z}/{x}/{y}.png' },
+  woods: { normalizedName: 'woods', bounds: [[646, -914], [-761, 442]], transform: [0.1855, 112.95, 0.1855, 167.85], rotation: 180, tileSize: 256, minZoom: 2, maxZoom: 6, svgPath: SVG + 'Woods.svg', tilePath: A + 'woods/main_0.16/{z}/{x}/{y}.png' },
+  shoreline: { normalizedName: 'shoreline', bounds: [[504, -415], [-1056, 618]], transform: [0.16, 83.2, 0.16, 111.1], rotation: 180, tileSize: 256, minZoom: 2, maxZoom: 6, svgPath: SVG + 'Shoreline.svg', tilePath: A + 'shoreline/main_summer/{z}/{x}/{y}.png' },
+  interchange: { normalizedName: 'interchange', bounds: [[598, -442], [-433, 426]], transform: [0.265, 150.6, 0.265, 134.6], rotation: 180, tileSize: 256, minZoom: 1, maxZoom: 6, svgPath: SVG + 'Interchange.svg', tilePath: A + 'interchange/main/{z}/{x}/{y}.png' },
+  'the-lab': { normalizedName: 'the-lab', bounds: [[-80, -477], [-287, -193]], transform: [0.575, 281.2, 0.575, 193.7], rotation: 270, tileSize: 175, minZoom: 2, maxZoom: 6, svgPath: null, tilePath: A + 'labs_v4/1st/{z}/{x}/{y}.png' },
+  reserve: { normalizedName: 'reserve', bounds: [[289, -293], [-303, 244]], transform: [0.395, 122.0, 0.395, 137.65], rotation: 180, tileSize: 256, minZoom: 2, maxZoom: 6, svgPath: SVG + 'Reserve.svg', tilePath: A + 'reserve/main/{z}/{x}/{y}.png' },
+  lighthouse: { normalizedName: 'lighthouse', bounds: [[515, -998], [-545, 725]], transform: [0.2, 0, 0.2, 0], rotation: 180, tileSize: 256, minZoom: 1, maxZoom: 6, svgPath: SVG + 'Lighthouse.svg', tilePath: null },
+  'streets-of-tarkov': { normalizedName: 'streets-of-tarkov', bounds: [[323, -295], [-280, 532]], transform: [0.38, 0, 0.38, 0], rotation: 180, tileSize: 256, minZoom: 1, maxZoom: 5, svgPath: SVG + 'StreetsOfTarkov.svg', tilePath: null },
+  'ground-zero': { normalizedName: 'ground-zero', bounds: [[249, -124], [-99, 364]], transform: [0.524, 167.3, 0.524, 65.1], rotation: 180, tileSize: 256, minZoom: 1, maxZoom: 6, svgPath: SVG + 'GroundZero.svg', tilePath: A + 'groundzero/main_summer/{z}/{x}/{y}.png' },
+  terminal: { normalizedName: 'terminal', bounds: [[463, -580], [-433, 475]], transform: [0.2, 0, 0.2, 0], rotation: 180, tileSize: 256, minZoom: 2, maxZoom: 6, svgPath: SVG + 'Terminal.svg', tilePath: null },
+  'the-labyrinth': { normalizedName: 'the-labyrinth', bounds: [[-52, -37], [53, 76]], transform: [2.115, 85.5, 2.115, 128.0], rotation: 270, tileSize: 256, minZoom: 1, maxZoom: 6, svgPath: null, tilePath: A + 'labyrinth/main/{z}/{x}/{y}.png' },
 };
 
-// Variantes qui réutilisent la même carte physique
 const ALIAS: Record<string, string> = {
   'night-factory': 'factory',
   'ground-zero-21': 'ground-zero',
   'ground-zero-tutorial': 'ground-zero',
+  streets: 'streets-of-tarkov',
 };
 
-export function mapDef(normalizedName: string): MapDef | null {
+export function getMapData(normalizedName: string): MapData | null {
   const key = ALIAS[normalizedName] ?? normalizedName;
-  return DEFS[key] ?? null;
+  return MAPS[key] ?? null;
 }
 
-export function svgUrl(def: MapDef): string {
-  return SVG_BASE + def.file;
-}
-
-export function mapDims(def: MapDef): { width: number; height: number } {
-  const [[x0, z0], [x1, z1]] = def.bounds;
-  const w = Math.abs(x1 - x0);
-  const h = Math.abs(z1 - z0);
-  const height = MAP_VHEIGHT;
-  const width = h === 0 ? height : height * (w / h);
-  return { width, height };
-}
-
-// (x,z) jeu -> [lat,lng] Leaflet (CRS.Simple), image posée sur [[0,0],[height,width]]
-export function project(
-  x: number,
-  z: number,
-  def: MapDef,
-  dims: { width: number; height: number },
-): [number, number] {
-  const [[x0, z0], [x1, z1]] = def.bounds;
-  let u = (x - x0) / (x1 - x0); // 0..1 sur la largeur
-  let v = (z - z0) / (z1 - z0); // 0..1 sur la hauteur (haut -> bas)
-  if (def.flipX) u = 1 - u;
-  if (def.flipY) v = 1 - v;
-  const px = u * dims.width;
-  const py = v * dims.height;
-  return [dims.height - py, px]; // y inversé (CRS.Simple a l'axe Y vers le haut)
+/** Sources de fond disponibles pour une carte (selon ce que tarkov.dev héberge). */
+export function providers(d: MapData): Provider[] {
+  const out: Provider[] = [];
+  if (d.svgPath) out.push({ id: 'svg', label: 'Abstrait' });
+  if (d.tilePath) out.push({ id: 'tiles', label: 'Satellite' });
+  return out;
 }
