@@ -9,6 +9,7 @@ import Badge from '@/components/ui/Badge.vue';
 import ProgressRing from '@/components/ui/ProgressRing.vue';
 import IconBox from '@/components/ui/IconBox.vue';
 import Modal from '@/components/ui/Modal.vue';
+import Reveal from '@/components/ui/Reveal.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 
 const game = useGameStore();
@@ -26,9 +27,21 @@ const kappa = computed(() => kappaProgress(tasks.data.value ?? [], game.complete
 const lk = computed(() => lightkeeperProgress(tasks.data.value ?? [], game.completed));
 const phase = computed(() => wipePhase(game.level, kappa.value.pct));
 const bottlenecks = computed(() => nextBottlenecks(tasks.data.value ?? [], traders.data.value ?? [], player.value));
+const top = computed(() => bottlenecks.value[0] ?? null);
+const rest = computed(() => bottlenecks.value.slice(1));
 const hoard = computed(() => hoardList(tasks.data.value ?? [], hideout.data.value ?? [], player.value).slice(0, 12));
 
+const phaseLower = computed(() => phase.value.label.toLowerCase());
 const phaseVariant = computed(() => (phase.value.phase === 'early' ? 'good' : phase.value.phase === 'mid' ? 'amber' : 'lk'));
+const nextLink = computed(() => (top.value?.type === 'quest' ? '/quetes' : top.value?.type === 'flea' ? '/config' : top.value?.type === 'trader' ? '/config' : '/quetes'));
+
+// position du joueur sur le rail de wipe (0-100)
+const wipePct = computed(() => {
+  const lvl = game.level;
+  if (lvl < 15) return Math.round((lvl / 15) * 33);
+  if (lvl < 40) return Math.round(33 + Math.min(1, (lvl - 15) / 25) * 34);
+  return Math.round(67 + Math.min(100, kappa.value.pct) / 100 * 33);
+});
 
 const confirmReset = ref(false);
 function doReset() { game.resetProgress(); confirmReset.value = false; }
@@ -36,77 +49,102 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 
 <template>
   <section class="view">
-    <div class="hero">
-      <div>
-        <span class="kicker">Wipe dashboard</span>
-        <h1 class="page-title">Salut. Voici ta prochaine étape.</h1>
-        <p class="lead" style="margin-bottom: 0">Ton état perso (niveau, marchands, hideout) personnalise tout : quêtes faisables, gating flea, listes d'achat.</p>
-      </div>
-      <Card class="lvlcard" glow>
-        <div class="lvl-big num">{{ game.level }}</div>
-        <div class="lvl-lbl">niveau PMC · {{ game.faction }}</div>
-        <Badge :variant="phaseVariant as any" style="margin-top: 8px">{{ phase.label }}</Badge>
-      </Card>
-    </div>
+    <!-- HERO -->
+    <header class="hero">
+      <span class="kicker">Wipe dashboard</span>
+      <h1 class="hero-title">Niveau <span class="lvl">{{ game.level }}</span>, {{ phaseLower }}.</h1>
+      <p class="hero-lead">{{ phase.advice }}</p>
 
-    <p class="advice">{{ phase.advice }}</p>
+      <RouterLink v-if="top" :to="nextLink" class="next-step">
+        <span class="ns-mark" />
+        <span class="ns-body">
+          <span class="ns-k">Prochaine étape</span>
+          <span class="ns-t">{{ top.title }}</span>
+          <span class="ns-d">{{ top.detail }}</span>
+        </span>
+        <span class="ns-arrow">→</span>
+      </RouterLink>
+
+      <div class="rail" role="img" :aria-label="`Progression de wipe ${wipePct}%`">
+        <div class="rail-track">
+          <span class="rail-fill" :style="{ width: wipePct + '%' }" />
+          <span class="rail-dot" :style="{ left: wipePct + '%' }"><b>{{ game.level }}</b></span>
+        </div>
+        <div class="rail-labels">
+          <span :class="{ on: phase.phase === 'early' }">Début</span>
+          <span :class="{ on: phase.phase === 'mid' }">Milieu</span>
+          <span :class="{ on: phase.phase === 'late' }">Fin · Kappa {{ kappa.pct }}%</span>
+        </div>
+      </div>
+    </header>
 
     <Spinner v-if="!ready" block label="Calcul de ta progression…" />
 
     <template v-else>
-      <!-- Bottlenecks -->
-      <h2 class="section-title">Tes prochains blocages</h2>
-      <div class="bottlenecks">
-        <Card v-for="(b, i) in bottlenecks" :key="i" class="bn">
-          <div class="bn-top">
-            <span class="bn-ic">{{ b.type === 'flea' ? '🔓' : b.type === 'trader' ? '⇧' : b.type === 'quest' ? '✓' : '★' }}</span>
-            <span class="bn-title">{{ b.title }}</span>
-          </div>
-          <div class="bn-detail">{{ b.detail }}</div>
-          <div v-if="b.progressPct != null" class="bar"><span :style="{ width: Math.min(100, b.progressPct) + '%' }" /></div>
-        </Card>
-      </div>
-
-      <!-- Progress rings -->
-      <Card class="rings">
-        <span class="kicker">Objectifs de fin de wipe</span>
-        <div class="ringrow">
-          <div class="ringbox">
-            <ProgressRing :value="kappa.pct" :size="104">
-              <div class="ring-pct num">{{ kappa.pct }}%</div>
-              <div class="ring-sub">Kappa</div>
-            </ProgressRing>
-            <div class="ring-cap num">{{ kappa.done }} / {{ kappa.total }}</div>
-          </div>
-          <div class="ringbox">
-            <ProgressRing :value="lk.pct" :size="104" color="var(--blue)">
-              <div class="ring-pct num">{{ lk.pct }}%</div>
-              <div class="ring-sub">Lightkeeper</div>
-            </ProgressRing>
-            <div class="ring-cap num">{{ lk.done }} / {{ lk.total }}</div>
-          </div>
+      <!-- Bottlenecks restants -->
+      <template v-if="rest.length">
+        <Reveal tag="h2" class="section-title">Autres blocages</Reveal>
+        <div class="bottlenecks">
+          <Reveal v-for="(b, i) in rest" :key="i" :index="i">
+            <Card class="bn" tone="surface">
+              <div class="bn-top">
+                <span class="bn-ic">{{ b.type === 'flea' ? '◳' : b.type === 'trader' ? '⇡' : b.type === 'quest' ? '✓' : '★' }}</span>
+                <span class="bn-title">{{ b.title }}</span>
+              </div>
+              <div class="bn-detail">{{ b.detail }}</div>
+              <div v-if="b.progressPct != null" class="bar"><span :style="{ width: Math.min(100, b.progressPct) + '%' }" /></div>
+            </Card>
+          </Reveal>
         </div>
-      </Card>
+      </template>
 
-      <!-- Hoard list -->
-      <div class="hoard-head">
-        <h2 class="section-title" style="margin: 0">À garder (quêtes + hideout)</h2>
-        <RouterLink to="/loot" class="seeall">Tout voir →</RouterLink>
+      <!-- Rings + hoard en bento -->
+      <div class="bento">
+        <Reveal class="cell rings-cell">
+          <Card class="rings">
+            <span class="kicker">Objectifs de fin de wipe</span>
+            <div class="ringrow">
+              <div class="ringbox">
+                <ProgressRing :value="kappa.pct" :size="108">
+                  <div class="ring-pct num">{{ kappa.pct }}%</div>
+                  <div class="ring-sub">Kappa</div>
+                </ProgressRing>
+                <div class="ring-cap num">{{ kappa.done }} / {{ kappa.total }}</div>
+              </div>
+              <div class="ringbox">
+                <ProgressRing :value="lk.pct" :size="108" color="var(--blue)">
+                  <div class="ring-pct num">{{ lk.pct }}%</div>
+                  <div class="ring-sub">Lightkeeper</div>
+                </ProgressRing>
+                <div class="ring-cap num">{{ lk.done }} / {{ lk.total }}</div>
+              </div>
+            </div>
+          </Card>
+        </Reveal>
+
+        <Reveal class="cell hoard-cell" :index="1">
+          <Card class="hoard-card">
+            <div class="hoard-head">
+              <span class="kicker">À garder — quêtes + hideout</span>
+              <RouterLink to="/loot" class="seeall">Tout voir →</RouterLink>
+            </div>
+            <div class="hoard">
+              <div v-for="h in hoard" :key="h.id" class="hoarditem" :style="{ '--reveal-delay': '0ms' }">
+                <IconBox :src="h.icon" :size="38" />
+                <div class="h-main">
+                  <div class="h-name"><b class="num">{{ h.count }}×</b> {{ h.name }}</div>
+                  <div class="h-src">{{ h.sources.slice(0, 2).join(' · ') }}<span v-if="h.sources.length > 2"> +{{ h.sources.length - 2 }}</span></div>
+                </div>
+                <div class="h-flags">
+                  <Badge v-if="h.fir" variant="fir">FiR</Badge>
+                  <Badge v-if="h.neededForN > 1" variant="info">×{{ h.neededForN }}</Badge>
+                </div>
+              </div>
+              <p v-if="!hoard.length" class="muted">Rien à garder — règle ton niveau et tes quêtes dans Config.</p>
+            </div>
+          </Card>
+        </Reveal>
       </div>
-      <div class="hoard">
-        <div v-for="h in hoard" :key="h.id" class="hoarditem">
-          <IconBox :src="h.icon" :size="40" />
-          <div class="h-main">
-            <div class="h-name"><b class="num">{{ h.count }}×</b> {{ h.name }}</div>
-            <div class="h-src">{{ h.sources.slice(0, 2).join(' · ') }}<span v-if="h.sources.length > 2"> +{{ h.sources.length - 2 }}</span></div>
-          </div>
-          <div class="h-flags">
-            <Badge v-if="h.fir" variant="fir">FiR</Badge>
-            <Badge v-if="h.neededForN > 1" variant="info">×{{ h.neededForN }}</Badge>
-          </div>
-        </div>
-      </div>
-      <p v-if="!hoard.length" class="muted">Rien à garder pour l'instant — coche ton niveau et tes quêtes pour personnaliser.</p>
 
       <div class="reset-row">
         <button class="reset" @click="confirmReset = true">↺ Nouveau wipe / prestige</button>
@@ -124,39 +162,91 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 </template>
 
 <style scoped>
-.hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
-.lvlcard { text-align: center; padding: 16px 24px; flex: 0 0 auto; min-width: 150px; }
-.lvl-big { font-family: var(--font-display); font-weight: 800; font-size: 48px; line-height: 1; color: var(--accent); }
-.lvl-lbl { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
-.advice { color: var(--ink-2); font-size: 14.5px; margin: 4px 0 24px; max-width: 760px; }
+/* ---------- HERO ---------- */
+.hero {
+  position: relative;
+  padding: 8px 0 26px;
+  margin-bottom: 8px;
+}
+.hero-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(30px, 4.4vw, 50px);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+  margin: 8px 0 10px;
+  color: var(--ink);
+  max-width: 16ch;
+}
+.hero-title .lvl {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 26px var(--accent-glow);
+}
+.hero-lead { color: var(--ink-2); font-size: 15.5px; max-width: 60ch; margin: 0 0 22px; }
 
-.bottlenecks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.next-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(100deg, var(--accent-soft), transparent 70%), var(--raised);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--r-lg);
+  padding: 14px 18px;
+  color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--t1) var(--ease-out-quart), box-shadow var(--t2) var(--ease-out-quart);
+  max-width: 560px;
+}
+.next-step:hover { transform: translateY(-2px); box-shadow: var(--shadow-md), var(--shadow-accent); }
+.next-step:active { transform: scale(0.99); }
+.ns-mark { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); flex: 0 0 auto; animation: ns-pulse 2.4s var(--ease) infinite; }
+@keyframes ns-pulse { 0%, 100% { box-shadow: 0 0 0 4px var(--accent-soft); } 50% { box-shadow: 0 0 0 7px transparent; } }
+.ns-body { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.ns-k { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--accent-dim); }
+.ns-t { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+.ns-d { font-size: 12.5px; color: var(--ink-3); }
+.ns-arrow { font-size: 20px; color: var(--accent); transition: transform var(--t2) var(--ease-out-quart); }
+.next-step:hover .ns-arrow { transform: translateX(4px); }
+
+.rail { margin-top: 26px; max-width: 640px; }
+.rail-track { position: relative; height: 4px; background: var(--hairline); border-radius: var(--r-pill); }
+.rail-fill { position: absolute; inset: 0 auto 0 0; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: var(--r-pill); transition: width 0.8s var(--ease-out-expo); }
+.rail-dot { position: absolute; top: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--ink-on-accent); box-shadow: var(--shadow-sm), 0 0 16px var(--accent-glow); transition: left 0.8s var(--ease-out-expo); }
+.rail-dot b { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
+.rail-labels { display: flex; justify-content: space-between; margin-top: 12px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-4); }
+.rail-labels .on { color: var(--accent); }
+
+/* ---------- bottlenecks ---------- */
+.bottlenecks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 26px; }
 .bn-top { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
-.bn-ic { font-size: 16px; }
+.bn-ic { font-size: 15px; color: var(--ink-3); }
 .bn-title { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
 .bn-detail { font-size: 13px; color: var(--ink-2); }
 .bar { height: 6px; background: var(--canvas); border-radius: var(--r-pill); margin-top: 10px; overflow: hidden; }
-.bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: var(--r-pill); transition: width var(--t3) var(--ease); }
+.bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); border-radius: var(--r-pill); transition: width 0.7s var(--ease-out-expo); }
 
-.rings { margin-bottom: 24px; }
-.ringrow { display: flex; gap: 40px; margin-top: 14px; flex-wrap: wrap; }
+/* ---------- bento ---------- */
+.bento { display: grid; grid-template-columns: minmax(280px, 0.9fr) 1.5fr; gap: 14px; align-items: stretch; }
+.rings { height: 100%; display: flex; flex-direction: column; }
+.ringrow { display: flex; gap: 36px; margin-top: 16px; flex-wrap: wrap; flex: 1; align-items: center; justify-content: center; }
 .ringbox { text-align: center; }
-.ring-pct { font-family: var(--font-display); font-weight: 700; font-size: 20px; }
+.ring-pct { font-family: var(--font-display); font-weight: 700; font-size: 21px; }
 .ring-sub { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.5px; }
 .ring-cap { font-size: 12px; color: var(--ink-2); margin-top: 8px; }
 
 .hoard-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
 .seeall { font-size: 13px; }
-.hoard { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.hoarditem { display: flex; align-items: center; gap: 11px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 10px; transition: all var(--t1) var(--ease); }
-.hoarditem:hover { border-color: var(--hairline-2); transform: translateY(-1px); }
+.hoard { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
+.hoarditem { display: flex; align-items: center; gap: 11px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 10px; transition: transform var(--t1) var(--ease-out-quart), border-color var(--t1) var(--ease); }
+.hoarditem:hover { border-color: var(--hairline-2); transform: translateY(-2px); }
 .h-main { flex: 1; min-width: 0; }
 .h-name { font-size: 13.5px; }
 .h-src { font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h-flags { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
 
 .reset-row { margin-top: 28px; }
-.reset { background: transparent; border: 1px solid var(--hairline-2); color: var(--ink-3); border-radius: var(--r-sm); padding: 8px 14px; cursor: pointer; font-size: 13px; transition: all var(--t1) var(--ease); }
+.reset { background: transparent; border: 1px solid var(--hairline-2); color: var(--ink-3); border-radius: var(--r-sm); padding: 8px 14px; cursor: pointer; font-size: 13px; }
 .reset:hover { border-color: var(--red); color: var(--red); }
 .muted { color: var(--ink-3); font-size: 13.5px; }
 
@@ -166,5 +256,5 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 .btn.danger { background: var(--red); color: #fff; }
 .btn.danger:hover { filter: brightness(1.1); }
 
-@media (max-width: 860px) { .hero { flex-direction: column; } }
+@media (max-width: 900px) { .bento { grid-template-columns: 1fr; } }
 </style>

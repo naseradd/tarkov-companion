@@ -69,9 +69,11 @@
   --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.52);
   --shadow-accent: 0 4px 18px rgba(184, 212, 59, 0.16);
 
-  /* — mouvement — */
+  /* — mouvement (courbes ease-out punchy, cf. emil/animations.dev) — */
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1); /* léger overshoot, à doser */
   --t1: 0.14s;
   --t2: 0.24s;
   --t3: 0.34s;
@@ -172,13 +174,34 @@ input, select, textarea { font-family: inherit; }
 @keyframes route-march { to { stroke-dashoffset: -26; } }
 
 /* transition de vue (router) */
-.view-enter-active { transition: opacity var(--t3) var(--ease), transform var(--t3) var(--ease); }
+.view-enter-active { transition: opacity var(--t3) var(--ease-out-expo), transform var(--t3) var(--ease-out-expo); }
 .view-leave-active { transition: opacity 0.16s var(--ease); }
 .view-enter-from { opacity: 0; transform: translateY(10px); }
 .view-leave-to { opacity: 0; }
 
+/* ---------- scroll-reveal (composant Reveal) ---------- */
+.reveal { opacity: 0; transform: translateY(16px); will-change: transform, opacity; }
+.reveal.in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.55s var(--ease-out-expo), transform 0.6s var(--ease-out-expo);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+/* ---------- feedback tactile global (press) ---------- */
+.chip, .seg-btn, .navbtn, .cmdk, .step, .llbtn, .reset, .btn, .lg-toggle, .trigger, .scav-btn {
+  transition-property: transform, background, color, border-color, box-shadow, opacity;
+  transition-duration: var(--t1);
+  transition-timing-function: var(--ease-out-quart);
+}
+.chip:active, .seg-btn:active, .navbtn:active, .cmdk:active, .step:active:not(:disabled),
+.llbtn:active, .reset:active, .btn:active, .lg-toggle:active, .scav-btn:active {
+  transform: scale(0.96);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+  .reveal { opacity: 1 !important; transform: none !important; }
 }
 
 /* ============================================================

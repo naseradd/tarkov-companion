@@ -14,6 +14,7 @@ import Combobox from '@/components/ui/Combobox.vue';
 import SegmentedControl from '@/components/ui/SegmentedControl.vue';
 import IconBox from '@/components/ui/IconBox.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
+import Reveal from '@/components/ui/Reveal.vue';
 
 const game = useGameStore();
 const route = useRoute();
@@ -126,7 +127,7 @@ const stateOpts = [
         </Chip>
       </div>
 
-      <div class="list">
+      <Reveal tag="div" class="list">
         <Card
           v-for="r in rows"
           :key="r.task.id"
@@ -209,7 +210,7 @@ const stateOpts = [
             <a v-if="r.task.wikiLink" :href="r.task.wikiLink" target="_blank" class="wiki">↗ Guide wiki détaillé</a>
           </div>
         </Card>
-      </div>
+      </Reveal>
       <EmptyState v-if="!rows.length" icon="✓" title="Aucune quête pour ces filtres">
         Change l'état ou les filtres — ou monte de niveau pour débloquer la suite.
       </EmptyState>

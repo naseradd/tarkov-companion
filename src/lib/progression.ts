@@ -147,7 +147,7 @@ export interface HoardEntry {
 export function hoardList(tasks: Task[], stations: HideoutStation[], p: PlayerState): HoardEntry[] {
   const map = new Map<string, HoardEntry>();
 
-  const CURRENCY = /^(roubles|euros|dollars)$/i;
+  const CURRENCY = /^(roubles|euros|dollars|rub|eur|usd|₽|\$|€)$/i;
   const add = (id: string, name: string, icon: string | null, count: number, fir: boolean, source: string) => {
     if (CURRENCY.test(name)) return; // la monnaie n'est pas un item à hoard
     const e = map.get(id);

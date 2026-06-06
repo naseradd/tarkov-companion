@@ -11,6 +11,7 @@ import Spinner from '@/components/ui/Spinner.vue';
 import Badge from '@/components/ui/Badge.vue';
 import Stat from '@/components/ui/Stat.vue';
 import IconBox from '@/components/ui/IconBox.vue';
+import Reveal from '@/components/ui/Reveal.vue';
 
 const game = useGameStore();
 const { data: stations, loading, error } = useResource<HideoutStation[]>('hideout', fetchHideout);
@@ -79,13 +80,15 @@ const guides = [
     <p class="lead">Par où commencer, la liste d'achat de ton prochain build, le ROI de la ferme Bitcoin, et les prérequis exacts (données live).</p>
 
     <div class="guides">
-      <Card v-for="g in guides" :key="g.h">
-        <h3 class="g-h">{{ g.h }}</h3>
-        <p class="g-p">{{ g.p }}</p>
-      </Card>
+      <Reveal v-for="(g, i) in guides" :key="g.h" :index="i">
+        <Card style="height: 100%">
+          <h3 class="g-h">{{ g.h }}</h3>
+          <p class="g-p">{{ g.p }}</p>
+        </Card>
+      </Reveal>
     </div>
 
-    <div class="two">
+    <Reveal class="two">
       <Card>
         <div class="card-head">
           <span class="kicker">Liste d'achat — prochain build de chaque station</span>
@@ -124,13 +127,13 @@ const guides = [
           </tbody>
         </table>
       </Card>
-    </div>
+    </Reveal>
 
     <h2 class="section-title" style="margin-top: 28px">Stations & prérequis</h2>
     <Spinner v-if="loading" block label="Chargement du hideout…" />
     <p v-else-if="error" class="err">Erreur API : {{ error }}</p>
 
-    <div v-else class="stations">
+    <Reveal v-else tag="div" class="stations">
       <Card
         v-for="s in ordered"
         :key="s.id"
@@ -172,7 +175,7 @@ const guides = [
           </div>
         </div>
       </Card>
-    </div>
+    </Reveal>
   </section>
 </template>
 

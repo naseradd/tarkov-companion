@@ -9,6 +9,7 @@ import Stat from '@/components/ui/Stat.vue';
 import Badge from '@/components/ui/Badge.vue';
 import Modal from '@/components/ui/Modal.vue';
 import SegmentedControl from '@/components/ui/SegmentedControl.vue';
+import Reveal from '@/components/ui/Reveal.vue';
 
 const game = useGameStore();
 const traders = useResource<TraderFull[]>('traders', fetchTraders);
@@ -43,7 +44,7 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
     </p>
 
     <!-- PROFIL -->
-    <Card class="block">
+    <Reveal :index="0"><Card class="block">
       <span class="kicker">Profil</span>
       <div class="profile">
         <div class="field-row">
@@ -63,10 +64,10 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
             @update:model-value="game.setFaction($event as any)" />
         </div>
       </div>
-    </Card>
+    </Card></Reveal>
 
     <!-- MARCHANDS -->
-    <Card class="block">
+    <Reveal :index="1"><Card class="block">
       <div class="block-head">
         <span class="kicker">Loyauté marchands (LL)</span>
         <span class="hint">Indépendant du niveau PMC</span>
@@ -87,10 +88,10 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
           </div>
         </div>
       </div>
-    </Card>
+    </Card></Reveal>
 
     <!-- HIDEOUT -->
-    <Card class="block">
+    <Reveal :index="2"><Card class="block">
       <div class="block-head">
         <span class="kicker">Niveaux hideout construits</span>
         <span class="hint">Sert aux listes d'achat et réservations</span>
@@ -109,10 +110,10 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
           </div>
         </div>
       </div>
-    </Card>
+    </Card></Reveal>
 
     <!-- QUÊTES + RESET -->
-    <Card class="block">
+    <Reveal :index="3"><Card class="block">
       <span class="kicker">Quêtes & remise à zéro</span>
       <div class="foot-row">
         <div>
@@ -121,7 +122,7 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
         </div>
         <button class="reset" @click="confirmReset = true">↺ Nouveau wipe / prestige</button>
       </div>
-    </Card>
+    </Card></Reveal>
 
     <Modal v-model="confirmReset" title="Nouveau wipe ?">
       Réinitialise niveau, marchands, hideout, quêtes et objectifs. La faction est conservée. Action irréversible.
