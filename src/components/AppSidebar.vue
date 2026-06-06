@@ -6,6 +6,7 @@ const nav = [
   { to: '/loot', label: 'Loot & Éco', icon: '₽' },
   { to: '/gear', label: 'Gear', icon: '⌖' },
   { to: '/hideout', label: 'Hideout', icon: '⌂' },
+  { to: '/config', label: 'Config', icon: '⚙' },
 ];
 </script>
 

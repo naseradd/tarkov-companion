@@ -7,6 +7,7 @@ const routes = [
   { path: '/loot', name: 'loot', component: () => import('@/views/LootView.vue') },
   { path: '/gear', name: 'gear', component: () => import('@/views/GearView.vue') },
   { path: '/hideout', name: 'hideout', component: () => import('@/views/HideoutView.vue') },
+  { path: '/config', name: 'config', component: () => import('@/views/ConfigView.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
