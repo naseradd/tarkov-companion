@@ -18,7 +18,7 @@ Vite · Vue 3 (`<script setup lang="ts">`) · Pinia · vue-router · Leaflet bru
 src/
   style.css              # design tokens (:root) + utilitaires + overrides Leaflet — cœur du design
   App.vue                # layout : header + sidebar + RouterView animé
-  router.ts              # 6 routes (dashboard / cartes / quetes / loot / gear / hideout)
+  router.ts              # 7 routes (dashboard / cartes / quetes / loot / gear / hideout / config)
   lib/
     tarkov.ts            # client GraphQL + queries + types — gameMode TOUJOURS regular
     maps.ts              # config cartes + projection coords(x,z)→pixels Leaflet — NE PAS toucher la logique
@@ -34,7 +34,7 @@ src/
     AppHeader.vue AppSidebar.vue CommandPalette.vue
     TacticalMap.vue RoutePanel.vue MapLegend.vue
   views/
-    DashboardView MapsView QuestsView LootView GearView HideoutView
+    DashboardView MapsView QuestsView LootView GearView HideoutView ConfigView
 ```
 
 ## Design system — « warm field intelligence »
