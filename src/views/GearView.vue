@@ -46,7 +46,7 @@ const ammoRows = computed(() => {
   let rows = list.map((a) => {
     const cells: PenCell[] = ARMOR_CLASSES.map((c) => penRating(a.penetrationPower, c));
     const r: any = {
-      id: a.item.id, icon: a.item.iconLink, wiki: a.item.wikiLink, name: a.item.shortName || a.item.name,
+      id: a.item.id, icon: a.item.iconLink, wiki: a.item.wikiLink, name: a.item.shortName || a.item.name, full: a.item.name,
       caliber: cleanCaliber(a.caliber), pen: a.penetrationPower, dmg: a.damage,
       frag: Math.round(a.fragmentationChance * 100), price: a.item.avg24hPrice, tier: ammoTier(a.penetrationPower).maxClass,
       buyable: canBuy(a),
@@ -78,7 +78,7 @@ const armorRows = computed(() =>
       const p = a.properties!;
       const plates = (p.armorSlots ?? []).filter((s) => (s.allowedPlates?.length ?? 0) > 0).length;
       return {
-        id: a.id, icon: a.iconLink, bg: a.backgroundColor, wiki: a.wikiLink, name: a.shortName || a.name,
+        id: a.id, icon: a.iconLink, bg: a.backgroundColor, wiki: a.wikiLink, name: a.shortName || a.name, full: a.name,
         cls: p.class as number, dura: p.durability ?? 0, mat: p.material?.name ?? '—',
         plates, ergo: p.ergoPenalty ?? 0, speed: p.speedPenalty ?? 0, price: a.avg24hPrice,
         rig: a.types?.includes('rig') && !a.types?.includes('armor'),
@@ -102,7 +102,8 @@ const gunRows = computed(() =>
   (guns.data.value ?? [])
     .filter((g) => g.properties?.caliber)
     .map((g) => ({
-      id: g.id, icon: g.iconLink, bg: g.backgroundColor, wiki: g.wikiLink, name: g.shortName || g.name,
+      id: g.id, icon: g.iconLink, bg: g.backgroundColor, wiki: g.wikiLink, name: g.shortName || g.name, full: g.name,
+      ammo: g.properties!.defaultAmmo?.name ?? null,
       caliber: cleanCaliber(g.properties!.caliber), ergo: g.properties!.ergonomics ?? 0,
       recoil: g.properties!.recoilVertical ?? 0, fireRate: g.properties!.fireRate ?? 0,
       dist: g.properties!.effectiveDistance ?? 0, price: g.avg24hPrice,
@@ -158,7 +159,10 @@ const classChips = [0, 1, 2, 3, 4, 5, 6];
           <div class="namecell">
             <IconBox :src="row.icon" :size="30" />
             <div class="ammoname">
-              <a v-if="row.wiki" :href="row.wiki" target="_blank">{{ row.name }}</a><span v-else>{{ row.name }}</span>
+              <span class="gn-line">
+                <a v-if="row.wiki" :href="row.wiki" target="_blank" :title="row.full">{{ row.name }}</a><span v-else>{{ row.name }}</span>
+                <a v-if="row.wiki" :href="row.wiki" target="_blank" class="wikiic" title="Voir sur le wiki">↗</a>
+              </span>
               <span class="cal">{{ row.caliber }}</span>
             </div>
             <span v-if="!row.buyable" class="nobuy" title="Hors de portée à tes niveaux de marchand">🔒</span>
@@ -182,7 +186,8 @@ const classChips = [0, 1, 2, 3, 4, 5, 6];
         <template #cell-name="{ row }">
           <div class="namecell">
             <IconBox :src="row.icon" :bg="row.bg" :size="32" />
-            <a v-if="row.wiki" :href="row.wiki" target="_blank">{{ row.name }}</a><span v-else>{{ row.name }}</span>
+            <a v-if="row.wiki" :href="row.wiki" target="_blank" :title="row.full">{{ row.name }}</a><span v-else>{{ row.name }}</span>
+            <a v-if="row.wiki" :href="row.wiki" target="_blank" class="wikiic" title="Voir sur le wiki">↗</a>
             <Badge v-if="row.rig" variant="info">rig</Badge>
           </div>
         </template>
@@ -200,7 +205,16 @@ const classChips = [0, 1, 2, 3, 4, 5, 6];
       <p v-else-if="guns.error.value" class="err">Erreur : {{ guns.error.value }}</p>
       <DataTable v-else :columns="gunCols" :rows="gunRows" initial-key="ergo" :initial-dir="-1">
         <template #cell-name="{ row }">
-          <div class="namecell"><IconBox :src="row.icon" :bg="row.bg" :size="32" /><a v-if="row.wiki" :href="row.wiki" target="_blank">{{ row.name }}</a><span v-else>{{ row.name }}</span></div>
+          <div class="namecell">
+            <IconBox :src="row.icon" :bg="row.bg" :size="34" />
+            <div class="gunname">
+              <span class="gn-line">
+                <a v-if="row.wiki" :href="row.wiki" target="_blank">{{ row.full }}</a><span v-else>{{ row.full }}</span>
+                <a v-if="row.wiki" :href="row.wiki" target="_blank" class="wikiic" title="Voir sur le wiki">↗</a>
+              </span>
+              <span v-if="row.ammo" class="gn-sub">munition par défaut : {{ row.ammo }}</span>
+            </div>
+          </div>
         </template>
         <template #cell-dist="{ row }">{{ row.dist }} m</template>
         <template #cell-price="{ row }">{{ rub(row.price) }}</template>
@@ -220,8 +234,13 @@ const classChips = [0, 1, 2, 3, 4, 5, 6];
 .rk i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .namecell { display: flex; align-items: center; gap: 10px; }
 .namecell a, .namecell > span { font-size: 13.5px; }
-.ammoname { display: flex; flex-direction: column; line-height: 1.2; }
+.ammoname { display: flex; flex-direction: column; line-height: 1.25; }
+.gunname { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.gn-line { display: inline-flex; align-items: center; gap: 6px; }
+.gn-sub { font-size: 11px; color: var(--ink-3); }
 .cal { font-family: var(--font-mono); font-size: 10px; color: var(--ink-3); }
+.wikiic { font-size: 11px; color: var(--ink-3); flex: 0 0 auto; }
+.wikiic:hover { color: var(--amber); }
 .nobuy { margin-left: auto; font-size: 11px; }
 .cell { display: inline-grid; place-items: center; width: 34px; height: 26px; border-radius: var(--r-xs); }
 .cell b { font-family: var(--font-mono); font-size: 13px; }

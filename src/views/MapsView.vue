@@ -125,21 +125,48 @@ const questMarkers = computed(() => {
   return out;
 });
 
-// Bring list : clés requises par les quêtes éligibles sur cette carte
-const bringKeys = computed(() => {
+// Quêtes éligibles touchant cette carte
+const relevantTasks = computed(() => {
   const m = current.value;
   if (!m || !tasks.value) return [];
-  const byId = new Map<string, { icon: string | null; name: string; quests: Set<string> }>();
-  for (const t of tasks.value) {
-    if (!isAvailable(t, player.value)) continue;
-    const onMap = t.map?.normalizedName === m.normalizedName || t.objectives.some((o) => (o.maps ?? []).some((mm) => mm.normalizedName === m.normalizedName));
-    if (!onMap) continue;
+  return tasks.value.filter((t) => isAvailable(t, player.value) &&
+    (t.map?.normalizedName === m.normalizedName || t.objectives.some((o) => (o.maps ?? []).some((mm) => mm.normalizedName === m.normalizedName))));
+});
+const onThisMap = (o: { maps: { normalizedName: string }[] | null }, n: string) => !(o.maps?.length) || o.maps.some((mm) => mm.normalizedName === n);
+
+interface BringKey { id: string; icon: string | null; name: string; short: string; wiki: string | null | undefined; quests: Set<string> }
+interface BringItem extends BringKey { count: number; fir: boolean }
+
+// Clés à apporter (loot verrouillé / objectifs)
+const bringKeys = computed<BringKey[]>(() => {
+  const m = current.value;
+  if (!m) return [];
+  const byId = new Map<string, BringKey>();
+  for (const t of relevantTasks.value)
     for (const o of t.objectives) for (const grp of o.requiredKeys ?? []) for (const k of grp) {
-      const e = byId.get(k.id) ?? { icon: k.iconLink, name: k.shortName || k.name, quests: new Set<string>() };
+      const e = byId.get(k.id) ?? { id: k.id, icon: k.iconLink, name: k.name, short: k.shortName, wiki: k.wikiLink, quests: new Set<string>() };
       e.quests.add(t.name);
       byId.set(k.id, e);
     }
-  }
+  return [...byId.values()];
+});
+
+// Objets de quête à rapporter (hand-in) présents sur cette carte
+const bringItems = computed<BringItem[]>(() => {
+  const m = current.value;
+  if (!m) return [];
+  const byId = new Map<string, BringItem>();
+  for (const t of relevantTasks.value)
+    for (const o of t.objectives) {
+      if (!o.items?.length || !onThisMap(o, m.normalizedName)) continue;
+      for (const it of o.items) {
+        const e = byId.get(it.id) ?? { id: it.id, icon: it.iconLink, name: it.name, short: it.shortName, wiki: it.wikiLink, count: 0, fir: false, quests: new Set<string>() };
+        e.count += o.count ?? 1;
+        if (o.foundInRaid) e.fir = true;
+        e.quests.add(t.name);
+        byId.set(it.id, e);
+      }
+    }
   return [...byId.values()];
 });
 
@@ -229,14 +256,35 @@ const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts
             />
           </Card>
 
-          <Card v-if="bringKeys.length">
-            <span class="kicker">À emporter — clés</span>
-            <div class="keys">
-              <div v-for="k in bringKeys" :key="k.name" class="keyrow">
-                <IconBox :src="k.icon" :size="30" />
-                <div class="keytext">
-                  <div class="keyname">{{ k.name }}</div>
-                  <div class="keyq">{{ [...k.quests].slice(0, 2).join(' · ') }}<span v-if="k.quests.size > 2"> +{{ k.quests.size - 2 }}</span></div>
+          <Card v-if="bringKeys.length || bringItems.length">
+            <span class="kicker">À emporter sur cette carte</span>
+
+            <div v-if="bringKeys.length" class="bl-group">
+              <div class="bl-h">🔑 Clés <span class="bl-n num">{{ bringKeys.length }}</span></div>
+              <div v-for="k in bringKeys" :key="k.id" class="blrow">
+                <IconBox :src="k.icon" :size="34" />
+                <div class="bltext">
+                  <div class="blname">
+                    <a v-if="k.wiki" :href="k.wiki" target="_blank">{{ k.name }}</a><span v-else>{{ k.name }}</span>
+                    <a v-if="k.wiki" :href="k.wiki" target="_blank" class="wikiic" title="Wiki">↗</a>
+                  </div>
+                  <div class="blq">{{ [...k.quests].slice(0, 2).join(' · ') }}<span v-if="k.quests.size > 2"> +{{ k.quests.size - 2 }}</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="bringItems.length" class="bl-group">
+              <div class="bl-h">📦 Objets de quête <span class="bl-n num">{{ bringItems.length }}</span></div>
+              <div v-for="it in bringItems" :key="it.id" class="blrow">
+                <IconBox :src="it.icon" :size="34" />
+                <div class="bltext">
+                  <div class="blname">
+                    <b class="num">{{ it.count }}×</b>
+                    <a v-if="it.wiki" :href="it.wiki" target="_blank">{{ it.name }}</a><span v-else>{{ it.name }}</span>
+                    <Badge v-if="it.fir" variant="fir">FiR</Badge>
+                    <a v-if="it.wiki" :href="it.wiki" target="_blank" class="wikiic" title="Wiki">↗</a>
+                  </div>
+                  <div class="blq">{{ [...it.quests].slice(0, 2).join(' · ') }}<span v-if="it.quests.size > 2"> +{{ it.quests.size - 2 }}</span></div>
                 </div>
               </div>
             </div>
@@ -259,11 +307,18 @@ const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts
 .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 8px; }
 .meta { display: flex; gap: 8px; flex-wrap: wrap; }
 .note { font-size: 12px; color: var(--ink-3); line-height: 1.6; margin: 12px 0 0; }
-.keys { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.keyrow { display: flex; align-items: center; gap: 10px; }
-.keytext { min-width: 0; }
-.keyname { font-size: 13.5px; color: var(--ink); }
-.keyq { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-group { margin-top: 12px; }
+.bl-group + .bl-group { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.bl-h { font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 9px; display: flex; align-items: center; gap: 7px; }
+.bl-n { font-size: 11px; color: var(--ink-3); background: var(--surface-2); border-radius: var(--r-pill); padding: 1px 8px; }
+.blrow { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.bltext { min-width: 0; flex: 1; }
+.blname { font-size: 13.5px; color: var(--ink); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.blname a { color: var(--ink); }
+.blname a:hover { color: var(--accent); }
+.wikiic { font-size: 12px; color: var(--ink-3); }
+.wikiic:hover { color: var(--amber); }
+.blq { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 .wiki { font-size: 13px; }
 .err { color: var(--red); font-family: var(--font-mono); font-size: 13px; }
 @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } .side { position: static; } }
