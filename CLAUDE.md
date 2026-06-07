@@ -25,7 +25,8 @@ src/
     format.ts            # ₽, temps, cap boussole, distance, calibre
     penetration.ts       # note efficacité ammo × classe d'armure
     economy.ts           # verdict keep/sell, ₽/slot net de taxe, craft/h, barter savings
-    progression.ts       # quest availability (DAG), next bottleneck, hoard list agrégée
+    progression.ts       # quest availability (DAG) — taskRequirements (status complete/active/failed) + traderRequirements (gate LL), trame principale (storyArc kappa/LK), traderStandingQuests, activeQuestItems, next bottleneck, hoard list
+    traders.ts           # tips curatés par marchand (comment monter LL, spécialité, piège) keyed normalizedName
     btc.ts               # ROI ferme Bitcoin
   stores/game.ts         # Pinia : faction, niveau PMC, LL marchands, hideout build, quêtes+objectifs faits, scav/karma, density (tout localStorage)
   composables/useResource.ts  # fetch caché par ressource
@@ -34,8 +35,9 @@ src/
     AppHeader.vue AppSidebar.vue CommandPalette.vue
     TacticalMap.vue RoutePanel.vue MapLegend.vue
   views/
-    DashboardView MapsView QuestsView LootView GearView HideoutView ConfigView
+    DashboardView StorylineView MapsView QuestsView TradersView TraderDetailView LootView GearView HideoutView ConfigView
 ```
+Routes (9) : dashboard `/` · trame `/trame` · cartes `/cartes` · quetes `/quetes` · marchands `/marchands` + détail `/marchands/:name` · loot `/loot` · gear `/gear` · hideout `/hideout` · config `/config`.
 
 ## Design system — « warm field intelligence »
 Sombre tactique mais **chaud, arrondi, lisible, premium** (pas le CRT froid). Tout passe par les tokens de `style.css`.

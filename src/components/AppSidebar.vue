@@ -1,8 +1,10 @@
 <script setup lang="ts">
 const nav = [
   { to: '/', label: 'Dashboard', icon: '◧', end: true },
+  { to: '/trame', label: 'Trame', icon: '◈' },
   { to: '/cartes', label: 'Cartes', icon: '◎' },
   { to: '/quetes', label: 'Quêtes', icon: '✓' },
+  { to: '/marchands', label: 'Marchands', icon: '⇄' },
   { to: '/loot', label: 'Loot & Éco', icon: '₽' },
   { to: '/gear', label: 'Gear', icon: '⌖' },
   { to: '/hideout', label: 'Hideout', icon: '⌂' },

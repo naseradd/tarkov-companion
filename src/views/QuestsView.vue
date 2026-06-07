@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchTasks, type Task } from '@/lib/tarkov';
-import { taskInfo, negativeRep, factionMatch, type PlayerState } from '@/lib/progression';
+import { taskInfo, negativeRep, factionMatch, type PlayerState, type TraderGate } from '@/lib/progression';
 import Spinner from '@/components/ui/Spinner.vue';
 import Card from '@/components/ui/Card.vue';
 import Chip from '@/components/ui/Chip.vue';
@@ -48,14 +48,16 @@ const mapOpts = computed(() => {
   return [{ value: '', label: 'Toutes les cartes' }, ...[...s].sort().map((m) => ({ value: m, label: m }))];
 });
 
-interface Row { task: Task; state: 'done' | 'available' | 'locked'; lockReasons: string[]; missing: { id: string; name: string }[]; neg: { trader: string; standing: number }[] }
+interface Row { task: Task; state: 'done' | 'available' | 'locked'; lockReasons: string[]; missing: { id: string; name: string }[]; traderGates: TraderGate[]; altBranch: { id: string; name: string }[]; neg: { trader: string; standing: number }[] }
+
+const cmpLabel = (cmp: string) => (cmp.startsWith('<') ? '≤' : '');
 
 const rows = computed<Row[]>(() => {
   const q = search.value.trim().toLowerCase();
   return factionTasks.value
     .map((task) => {
       const info = taskInfo(task, player.value);
-      return { task, state: info.state, lockReasons: info.lockReasons, missing: info.missingPrereqs, neg: negativeRep(task) };
+      return { task, state: info.state, lockReasons: info.lockReasons, missing: info.missingPrereqs, traderGates: info.traderGates, altBranch: info.altBranch, neg: negativeRep(task) };
     })
     .filter((r) => {
       if (trader.value && r.task.trader?.name !== trader.value) return false;
@@ -172,6 +174,27 @@ const stateOpts = [
               <div v-if="r.missing.length" class="prereq">Après : {{ r.missing.map((m) => m.name).join(' · ') }}</div>
             </div>
 
+            <div v-if="r.traderGates.length" class="gatebox">
+              <span class="kicker">Loyauté marchand requise</span>
+              <div class="lockreasons">
+                <Badge
+                  v-for="(g, gi) in r.traderGates"
+                  :key="gi"
+                  :variant="g.type === 'level' ? (g.met ? 'good' : 'amber') : 'blue'"
+                >
+                  {{ g.trader }}
+                  <template v-if="g.type === 'level'">LL{{ g.value }}</template>
+                  <template v-else-if="g.type === 'reputation'">rép {{ cmpLabel(g.cmp) }}{{ g.value }}</template>
+                  <template v-else>{{ g.type }} {{ g.value }}</template>
+                </Badge>
+              </div>
+              <p class="gatehint">La loyauté (LL) se règle dans <RouterLink to="/marchands">Marchands</RouterLink>, indépendamment du niveau PMC.</p>
+            </div>
+
+            <div v-if="r.altBranch.length" class="altbox">
+              ⎇ <b>Branche alternative</b> : requiert {{ r.altBranch.map((a) => a.name).join(' · ') }} <b>échouée(s)</b>. Choix mutuellement exclusif.
+            </div>
+
             <div v-if="hasFir(r.task)" class="firwarn">
               ⚠ Objets en <b>Found in Raid</b> — porte-les dans ton rig, <b>jamais</b> dans le conteneur sécurisé (ça détruit le FiR).
             </div>
@@ -252,9 +275,14 @@ const stateOpts = [
 
 .q-body { padding: 4px 16px 18px 51px; border-top: 1px solid var(--hairline); display: flex; flex-direction: column; gap: 8px; }
 .q-body .kicker { margin-top: 8px; }
-.lockbox { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 10px 12px; margin-top: 10px; }
+.lockbox, .gatebox { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 10px 12px; margin-top: 10px; }
 .lockreasons { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .prereq { font-size: 12.5px; color: var(--amber); }
+.gatehint { font-size: 11.5px; color: var(--ink-3); margin: 4px 0 0; }
+.gatehint a { color: var(--ink-2); }
+.gatehint a:hover { color: var(--accent); }
+.altbox { background: rgba(167, 139, 255, 0.08); border: 1px solid #443060; border-radius: var(--r-sm); padding: 9px 12px; font-size: 12.5px; color: var(--ink-2); margin-top: 10px; }
+.altbox b { color: var(--purple); font-weight: 600; }
 .firwarn { background: var(--amber-soft); border: 1px solid #5c4517; border-radius: var(--r-sm); padding: 9px 12px; font-size: 12.5px; color: var(--ink); margin-top: 10px; }
 .obj { margin: 2px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 7px; }
 .obj li { display: flex; gap: 9px; align-items: flex-start; font-size: 14px; line-height: 1.45; }

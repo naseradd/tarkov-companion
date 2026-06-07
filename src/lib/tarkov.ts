@@ -61,6 +61,13 @@ export interface TaskObjective {
   possibleLocations?: { map: { normalizedName: string } | null; positions: Position[] }[] | null;
 }
 export interface TaskReq { task: { id: string; name: string } | null; status: string[] | null; }
+/** Gate marchand sur une quête : requirementType 'level' | 'reputation' | 'commerce', compareMethod '>=' '<=' '=' … */
+export interface TaskTraderReq {
+  trader: { name: string; normalizedName: string } | null;
+  requirementType: string;
+  compareMethod: string;
+  value: number;
+}
 export interface TraderStanding { trader: { name: string } | null; standing: number; }
 export interface Task {
   id: string;
@@ -77,6 +84,7 @@ export interface Task {
   trader: Trader | null;
   map: { name: string; normalizedName: string } | null;
   taskRequirements: TaskReq[] | null;
+  traderRequirements: TaskTraderReq[] | null;
   finishRewards: { traderStanding: TraderStanding[] | null } | null;
   objectives: TaskObjective[];
 }
@@ -87,10 +95,31 @@ export interface TraderLevel {
   requiredPlayerLevel: number | null;
   requiredReputation: number | null;
   requiredCommerce: number | null;
+  payRate?: number | null;
 }
 export interface TraderFull {
   id: string; name: string; normalizedName: string; imageLink: string | null;
   levels: TraderLevel[];
+}
+
+/* ---- Boutiques marchands (cash offers) — pour les pages par trader ---- */
+export interface TraderCashOffer {
+  item: {
+    id: string; name: string; shortName: string; iconLink: string | null; wikiLink: string | null;
+    backgroundColor: string | null; avg24hPrice: number | null; basePrice: number | null; types: string[] | null;
+  };
+  minTraderLevel: number | null;
+  price: number;
+  priceRUB: number;
+  currency: string;
+  taskUnlock: { id: string; name: string } | null;
+  buyLimit: number | null;
+}
+export interface TraderShop extends TraderFull {
+  description: string | null;
+  resetTime: string | null;
+  currency: { name: string } | null;
+  cashOffers: TraderCashOffer[];
 }
 export interface PlayerLevel { level: number; exp: number; }
 export interface FleaMarket { minPlayerLevel: number; sellOfferFeeRate: number; sellRequirementFeeRate: number; }
@@ -217,6 +246,7 @@ const Q_MAPS = `{ maps(gameMode: regular){ id name normalizedName wiki raidDurat
 const Q_TASKS = `{ tasks(gameMode: regular){ id name normalizedName experience minPlayerLevel kappaRequired lightkeeperRequired factionName wikiLink taskImageLink availableDelaySecondsMin
   trader{ id name normalizedName imageLink } map{ name normalizedName }
   taskRequirements{ task{ id name } status }
+  traderRequirements{ trader{ name normalizedName } requirementType compareMethod value }
   finishRewards{ traderStanding{ trader{ name } standing } }
   objectives{ id type description optional maps{ name normalizedName }
     ... on TaskObjectiveBasic{ zones{ id map{ normalizedName } position{ x z } } }
@@ -227,7 +257,11 @@ const Q_TASKS = `{ tasks(gameMode: regular){ id name normalizedName experience m
     ... on TaskObjectiveShoot{ targetNames count zones{ id map{ normalizedName } position{ x z } } requiredKeys{ id name shortName iconLink wikiLink } } } } }`;
 
 const Q_TRADERS = `{ traders(gameMode: regular){ id name normalizedName imageLink
-  levels{ level requiredPlayerLevel requiredReputation requiredCommerce } } }`;
+  levels{ level requiredPlayerLevel requiredReputation requiredCommerce payRate } } }`;
+
+const Q_TRADER_SHOPS = `{ traders(gameMode: regular){ id name normalizedName imageLink description resetTime currency{ name }
+  levels{ level requiredPlayerLevel requiredReputation requiredCommerce payRate }
+  cashOffers{ item{ id name shortName iconLink wikiLink backgroundColor avg24hPrice basePrice types } minTraderLevel price priceRUB currency taskUnlock{ id name } buyLimit } } }`;
 
 const Q_PLAYER_LEVELS = `{ playerLevels{ level exp } }`;
 
@@ -284,6 +318,7 @@ const norm = (raw: ArmorItem): ArmorItem => ({
 export const fetchMaps = () => gql<{ maps: TarkovMap[] }>(Q_MAPS).then((d) => d.maps);
 export const fetchTasks = () => gql<{ tasks: Task[] }>(Q_TASKS).then((d) => d.tasks);
 export const fetchTraders = () => gql<{ traders: TraderFull[] }>(Q_TRADERS).then((d) => d.traders);
+export const fetchTraderShops = () => gql<{ traders: TraderShop[] }>(Q_TRADER_SHOPS).then((d) => d.traders);
 export const fetchPlayerLevels = () => gql<{ playerLevels: PlayerLevel[] }>(Q_PLAYER_LEVELS).then((d) => d.playerLevels);
 export const fetchFlea = () => gql<{ fleaMarket: FleaMarket }>(Q_FLEA).then((d) => d.fleaMarket);
 export const fetchAmmo = () => gql<{ ammo: Ammo[] }>(Q_AMMO).then((d) => d.ammo);

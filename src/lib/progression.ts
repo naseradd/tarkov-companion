@@ -20,13 +20,40 @@ export function factionMatch(taskFaction: string | null, player: Faction): boole
   return false; // Scav : seulement les tâches Any/null
 }
 
-function reqMet(task: Task, completed: Set<string>): boolean {
-  for (const r of task.taskRequirements ?? []) {
-    if (!r.task) continue;
-    const needsComplete = (r.status ?? ['complete']).includes('complete');
-    if (needsComplete && !completed.has(r.task.id)) return false;
+const CMP: Record<string, (a: number, b: number) => boolean> = {
+  '>=': (a, b) => a >= b,
+  '>': (a, b) => a > b,
+  '=': (a, b) => a === b,
+  '==': (a, b) => a === b,
+  '<': (a, b) => a < b,
+  '<=': (a, b) => a <= b,
+};
+const compareNum = (a: number, method: string, b: number) => (CMP[method] ?? CMP['>='])(a, b);
+
+/** Gate marchand évalué pour le joueur. Seul `level` est vérifiable (LL trackée) ;
+ *  réputation/commerce sont informatifs (non trackés numériquement) → supposés remplis. */
+export interface TraderGate {
+  trader: string;
+  normalizedName: string;
+  type: string; // 'level' | 'reputation' | 'commerce'
+  cmp: string;
+  value: number;
+  met: boolean;
+  verifiable: boolean;
+}
+
+function evalTraderGates(task: Task, p: PlayerState): TraderGate[] {
+  const out: TraderGate[] = [];
+  for (const tr of task.traderRequirements ?? []) {
+    if (!tr.trader) continue;
+    if (tr.requirementType === 'level') {
+      const cur = p.traderLL(tr.trader.normalizedName);
+      out.push({ trader: tr.trader.name, normalizedName: tr.trader.normalizedName, type: 'level', cmp: tr.compareMethod, value: tr.value, met: compareNum(cur, tr.compareMethod, tr.value), verifiable: true });
+    } else {
+      out.push({ trader: tr.trader.name, normalizedName: tr.trader.normalizedName, type: tr.requirementType, cmp: tr.compareMethod, value: tr.value, met: true, verifiable: false });
+    }
   }
-  return true;
+  return out;
 }
 
 export type TaskState = 'done' | 'available' | 'locked';
@@ -35,30 +62,37 @@ export interface TaskInfo {
   state: TaskState;
   lockReasons: string[];
   missingPrereqs: { id: string; name: string }[];
+  traderGates: TraderGate[];
+  /** Quêtes qui doivent avoir échoué (branche alternative) — informatif, non bloquant. */
+  altBranch: { id: string; name: string }[];
 }
 
 export function taskInfo(task: Task, p: PlayerState): TaskInfo {
-  if (p.completed.has(task.id)) return { state: 'done', lockReasons: [], missingPrereqs: [] };
+  if (p.completed.has(task.id)) return { state: 'done', lockReasons: [], missingPrereqs: [], traderGates: [], altBranch: [] };
   const reasons: string[] = [];
   const missing: { id: string; name: string }[] = [];
+  const altBranch: { id: string; name: string }[] = [];
 
   if (!factionMatch(task.factionName, p.faction)) reasons.push(`Faction ${task.factionName}`);
   if (task.minPlayerLevel && p.level < task.minPlayerLevel) reasons.push(`Niveau ${task.minPlayerLevel} requis`);
+
   for (const r of task.taskRequirements ?? []) {
     if (!r.task) continue;
-    const needsComplete = (r.status ?? ['complete']).includes('complete');
-    if (needsComplete && !p.completed.has(r.task.id)) missing.push({ id: r.task.id, name: r.task.name });
+    const st = r.status ?? ['complete'];
+    // status 'failed' sans 'complete' = branche alternative (l'autre quête doit être ratée) : non bloquant
+    if (st.includes('failed') && !st.includes('complete')) { altBranch.push({ id: r.task.id, name: r.task.name }); continue; }
+    // 'complete' et 'active' : on exige la complétion du prérequis (seul l'état complété est tracké)
+    if (!p.completed.has(r.task.id)) missing.push({ id: r.task.id, name: r.task.name });
   }
   if (missing.length) reasons.push(`${missing.length} prérequis`);
 
-  return { state: reasons.length ? 'locked' : 'available', lockReasons: reasons, missingPrereqs: missing };
+  const traderGates = evalTraderGates(task, p);
+  for (const g of traderGates) if (g.verifiable && !g.met) reasons.push(`${g.trader} LL${g.value}`);
+
+  return { state: reasons.length ? 'locked' : 'available', lockReasons: reasons, missingPrereqs: missing, traderGates, altBranch };
 }
 
-export const isAvailable = (task: Task, p: PlayerState): boolean =>
-  !p.completed.has(task.id) &&
-  factionMatch(task.factionName, p.faction) &&
-  (!task.minPlayerLevel || p.level >= task.minPlayerLevel) &&
-  reqMet(task, p.completed);
+export const isAvailable = (task: Task, p: PlayerState): boolean => taskInfo(task, p).state === 'available';
 
 /** Quête a un effet de réputation négatif sur un marchand. */
 export function negativeRep(task: Task): { trader: string; standing: number }[] {
@@ -82,6 +116,91 @@ export function lightkeeperProgress(tasks: Task[], completed: Set<string>): Prog
   return { done, total: k.length, pct: k.length ? Math.round((done / k.length) * 100) : 0 };
 }
 
+/* ----------------------- Trame principale ------------------------ */
+// La « trame principale » d'EFT = le chemin Collector/Kappa et l'arc Lightkeeper.
+// 100 % data-driven (flags kappaRequired / lightkeeperRequired de tarkov.dev).
+
+export interface StoryArc {
+  done: number;
+  total: number;
+  pct: number;
+  frontier: Task[]; // quêtes de la trame faisables maintenant (le « front »)
+  locked: number;   // quêtes de la trame encore verrouillées
+}
+
+export function storyArc(tasks: Task[], p: PlayerState, kind: 'kappa' | 'lightkeeper'): StoryArc {
+  const flag = (t: Task) => (kind === 'kappa' ? t.kappaRequired : t.lightkeeperRequired);
+  const arc = tasks.filter(flag);
+  const done = arc.filter((t) => p.completed.has(t.id)).length;
+  const frontier = arc
+    .filter((t) => isAvailable(t, p))
+    .sort((a, b) => (a.minPlayerLevel ?? 0) - (b.minPlayerLevel ?? 0));
+  return {
+    done,
+    total: arc.length,
+    pct: arc.length ? Math.round((done / arc.length) * 100) : 0,
+    frontier,
+    locked: Math.max(0, arc.length - done - frontier.length),
+  };
+}
+
+/* ------------------- Réputation par marchand --------------------- */
+// Quêtes qui octroient de la standing positive à un marchand (pour les pages trader).
+
+export interface RepQuest { task: Task; standing: number; state: TaskState; }
+
+export function traderStandingQuests(tasks: Task[], traderName: string, p: PlayerState): RepQuest[] {
+  const out: RepQuest[] = [];
+  for (const t of tasks) {
+    const st = (t.finishRewards?.traderStanding ?? []).find((s) => s.trader?.name === traderName);
+    if (!st || st.standing <= 0) continue;
+    out.push({ task: t, standing: st.standing, state: taskInfo(t, p).state });
+  }
+  const rank: Record<TaskState, number> = { available: 0, locked: 1, done: 2 };
+  return out.sort((a, b) => rank[a.state] - rank[b.state] || b.standing - a.standing);
+}
+
+/* --------------- Items à garder pour quêtes actives -------------- */
+// Items requis par les quêtes FAISABLES MAINTENANT (le front), avec quêtes + cartes.
+
+export interface ActiveItem {
+  id: string;
+  name: string;
+  icon: string | null;
+  count: number;
+  fir: boolean;
+  quests: string[];
+  maps: string[];
+}
+
+export function activeQuestItems(tasks: Task[], p: PlayerState): ActiveItem[] {
+  const map = new Map<string, ActiveItem>();
+  const CURRENCY = /^(roubles|euros|dollars|rub|eur|usd|₽|\$|€)$/i;
+  for (const t of tasks) {
+    if (!isAvailable(t, p)) continue;
+    for (const o of t.objectives) {
+      if (!o.items?.length) continue;
+      const mapsForObj = (o.maps ?? []).map((m) => m.name);
+      for (const it of o.items) {
+        if (CURRENCY.test(it.name)) continue;
+        const e = map.get(it.id);
+        if (e) {
+          e.count += o.count ?? 1;
+          if (o.foundInRaid) e.fir = true;
+          if (!e.quests.includes(t.name)) e.quests.push(t.name);
+          for (const m of mapsForObj) if (!e.maps.includes(m)) e.maps.push(m);
+        } else {
+          map.set(it.id, {
+            id: it.id, name: it.shortName || it.name, icon: it.iconLink,
+            count: o.count ?? 1, fir: !!o.foundInRaid, quests: [t.name], maps: [...mapsForObj],
+          });
+        }
+      }
+    }
+  }
+  return [...map.values()].sort((a, b) => b.quests.length - a.quests.length || b.count - a.count);
+}
+
 /* --------------------------- Bottleneck --------------------------- */
 
 export const FLEA_LEVEL = 15;
@@ -91,6 +210,7 @@ export interface Bottleneck {
   title: string;
   detail: string;
   progressPct?: number;
+  to?: string;
 }
 
 export function nextBottlenecks(tasks: Task[], traders: TraderFull[], p: PlayerState): Bottleneck[] {
@@ -100,8 +220,9 @@ export function nextBottlenecks(tasks: Task[], traders: TraderFull[], p: PlayerS
     out.push({
       type: 'flea',
       title: 'Débloquer le Flea Market',
-      detail: `Niveau ${p.level} / ${FLEA_LEVEL} — ${FLEA_LEVEL - p.level} niveau(x) restant(s)`,
+      detail: `Niveau ${p.level} / ${FLEA_LEVEL}, ${FLEA_LEVEL - p.level} niveau(x) restant(s)`,
       progressPct: Math.round((p.level / FLEA_LEVEL) * 100),
+      to: '/config',
     });
   }
 
@@ -110,12 +231,15 @@ export function nextBottlenecks(tasks: Task[], traders: TraderFull[], p: PlayerS
     const next = t.levels.find((l) => l.level === cur + 1);
     if (!next) continue;
     const needLvl = next.requiredPlayerLevel ?? 0;
+    // On signale le palier marchand quand le niveau PMC est le frein.
+    // La loyauté demande aussi réputation + commerce dépensé (voir la fiche marchand).
     if (needLvl > p.level) {
       out.push({
         type: 'trader',
         title: `${t.name} LL${next.level}`,
-        detail: `Niveau ${p.level} / ${needLvl}`,
+        detail: `Niveau PMC ${p.level} / ${needLvl} (+ rép & commerce)`,
         progressPct: Math.round((p.level / needLvl) * 100),
+        to: `/marchands/${t.normalizedName}`,
       });
     }
   }
@@ -125,6 +249,7 @@ export function nextBottlenecks(tasks: Task[], traders: TraderFull[], p: PlayerS
     type: avail.length ? 'quest' : 'clear',
     title: avail.length ? `${avail.length} quêtes faisables maintenant` : 'Aucune quête bloquée par le niveau',
     detail: avail.length ? 'Ouvre le module Quêtes pour les voir' : 'Monte ton niveau / tes marchands',
+    to: '/quetes',
   });
 
   return out
