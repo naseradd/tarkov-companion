@@ -62,15 +62,48 @@ export interface TaskInfo {
   state: TaskState;
   lockReasons: string[];
   missingPrereqs: { id: string; name: string }[];
+  /** Prérequis de statut 'active' encore inatteignables : il faut d'abord pouvoir les lancer. */
+  activePrereqs: { id: string; name: string }[];
   traderGates: TraderGate[];
   /** Quêtes qui doivent avoir échoué (branche alternative) — informatif, non bloquant. */
   altBranch: { id: string; name: string }[];
 }
 
-export function taskInfo(task: Task, p: PlayerState): TaskInfo {
-  if (p.completed.has(task.id)) return { state: 'done', lockReasons: [], missingPrereqs: [], traderGates: [], altBranch: [] };
+// tarkov.dev : un prérequis peut exiger plusieurs états (n'importe lequel suffit).
+const reqIsActiveOnly = (st: string[]) => st.includes('active') && !st.includes('complete');
+const reqIsFailedOnly = (st: string[]) => st.includes('failed') && !st.includes('complete') && !st.includes('active');
+
+/** Gates « durs » HORS prérequis 'active' : faction, niveau, LL marchand, prérequis 'complete'.
+ *  Base de l'atteignabilité : une quête faisable ou faite satisfait un prérequis de statut 'active'. */
+function hardGatesMet(task: Task, p: PlayerState): boolean {
+  if (!factionMatch(task.factionName, p.faction)) return false;
+  if (task.minPlayerLevel && p.level < task.minPlayerLevel) return false;
+  for (const tr of task.traderRequirements ?? []) {
+    if (tr.trader && tr.requirementType === 'level' && !compareNum(p.traderLL(tr.trader.normalizedName), tr.compareMethod, tr.value)) return false;
+  }
+  for (const r of task.taskRequirements ?? []) {
+    if (!r.task) continue;
+    const st = r.status ?? ['complete'];
+    if (reqIsActiveOnly(st) || reqIsFailedOnly(st)) continue; // ignorés pour l'atteignabilité
+    if (!p.completed.has(r.task.id)) return false; // prérequis 'complete'
+  }
+  return true;
+}
+
+/** Quêtes « atteignables » = déjà faites OU lançables maintenant (sans tenir compte des prérequis 'active').
+ *  Un prérequis 'active' (ex. Kind of Sabotage ← Supply Plans) est satisfait si la quête citée est ici :
+ *  en jeu, la suite se débloque dès que le prérequis est lancé, pas seulement terminé. */
+export function reachableSet(tasks: Task[], p: PlayerState): Set<string> {
+  const out = new Set<string>();
+  for (const t of tasks) if (p.completed.has(t.id) || hardGatesMet(t, p)) out.add(t.id);
+  return out;
+}
+
+export function taskInfo(task: Task, p: PlayerState, reachable?: Set<string>): TaskInfo {
+  if (p.completed.has(task.id)) return { state: 'done', lockReasons: [], missingPrereqs: [], activePrereqs: [], traderGates: [], altBranch: [] };
   const reasons: string[] = [];
   const missing: { id: string; name: string }[] = [];
+  const activePrereqs: { id: string; name: string }[] = [];
   const altBranch: { id: string; name: string }[] = [];
 
   if (!factionMatch(task.factionName, p.faction)) reasons.push(`Faction ${task.factionName}`);
@@ -79,20 +112,27 @@ export function taskInfo(task: Task, p: PlayerState): TaskInfo {
   for (const r of task.taskRequirements ?? []) {
     if (!r.task) continue;
     const st = r.status ?? ['complete'];
-    // status 'failed' sans 'complete' = branche alternative (l'autre quête doit être ratée) : non bloquant
-    if (st.includes('failed') && !st.includes('complete')) { altBranch.push({ id: r.task.id, name: r.task.name }); continue; }
-    // 'complete' et 'active' : on exige la complétion du prérequis (seul l'état complété est tracké)
+    if (reqIsFailedOnly(st)) { altBranch.push({ id: r.task.id, name: r.task.name }); continue; }
+    if (reqIsActiveOnly(st)) {
+      // Débloqué dès que le prérequis est lancé : satisfait s'il est atteignable (faisable ou fait).
+      const ok = reachable ? reachable.has(r.task.id) : p.completed.has(r.task.id);
+      if (!ok) activePrereqs.push({ id: r.task.id, name: r.task.name });
+      continue;
+    }
+    // 'complete' (ou complete+failed) : complétion requise
     if (!p.completed.has(r.task.id)) missing.push({ id: r.task.id, name: r.task.name });
   }
   if (missing.length) reasons.push(`${missing.length} prérequis`);
+  if (activePrereqs.length) reasons.push(`${activePrereqs.length} à lancer d'abord`);
 
   const traderGates = evalTraderGates(task, p);
   for (const g of traderGates) if (g.verifiable && !g.met) reasons.push(`${g.trader} LL${g.value}`);
 
-  return { state: reasons.length ? 'locked' : 'available', lockReasons: reasons, missingPrereqs: missing, traderGates, altBranch };
+  return { state: reasons.length ? 'locked' : 'available', lockReasons: reasons, missingPrereqs: missing, activePrereqs, traderGates, altBranch };
 }
 
-export const isAvailable = (task: Task, p: PlayerState): boolean => taskInfo(task, p).state === 'available';
+export const isAvailable = (task: Task, p: PlayerState, reachable?: Set<string>): boolean =>
+  taskInfo(task, p, reachable).state === 'available';
 
 /** Quête a un effet de réputation négatif sur un marchand. */
 export function negativeRep(task: Task): { trader: string; standing: number }[] {
@@ -129,11 +169,12 @@ export interface StoryArc {
 }
 
 export function storyArc(tasks: Task[], p: PlayerState, kind: 'kappa' | 'lightkeeper'): StoryArc {
+  const reachable = reachableSet(tasks, p);
   const flag = (t: Task) => (kind === 'kappa' ? t.kappaRequired : t.lightkeeperRequired);
   const arc = tasks.filter(flag);
   const done = arc.filter((t) => p.completed.has(t.id)).length;
   const frontier = arc
-    .filter((t) => isAvailable(t, p))
+    .filter((t) => isAvailable(t, p, reachable))
     .sort((a, b) => (a.minPlayerLevel ?? 0) - (b.minPlayerLevel ?? 0));
   return {
     done,
@@ -150,11 +191,12 @@ export function storyArc(tasks: Task[], p: PlayerState, kind: 'kappa' | 'lightke
 export interface RepQuest { task: Task; standing: number; state: TaskState; }
 
 export function traderStandingQuests(tasks: Task[], traderName: string, p: PlayerState): RepQuest[] {
+  const reachable = reachableSet(tasks, p);
   const out: RepQuest[] = [];
   for (const t of tasks) {
     const st = (t.finishRewards?.traderStanding ?? []).find((s) => s.trader?.name === traderName);
     if (!st || st.standing <= 0) continue;
-    out.push({ task: t, standing: st.standing, state: taskInfo(t, p).state });
+    out.push({ task: t, standing: st.standing, state: taskInfo(t, p, reachable).state });
   }
   const rank: Record<TaskState, number> = { available: 0, locked: 1, done: 2 };
   return out.sort((a, b) => rank[a.state] - rank[b.state] || b.standing - a.standing);
@@ -174,10 +216,11 @@ export interface ActiveItem {
 }
 
 export function activeQuestItems(tasks: Task[], p: PlayerState): ActiveItem[] {
+  const reachable = reachableSet(tasks, p);
   const map = new Map<string, ActiveItem>();
   const CURRENCY = /^(roubles|euros|dollars|rub|eur|usd|₽|\$|€)$/i;
   for (const t of tasks) {
-    if (!isAvailable(t, p)) continue;
+    if (!isAvailable(t, p, reachable)) continue;
     for (const o of t.objectives) {
       if (!o.items?.length) continue;
       const mapsForObj = (o.maps ?? []).map((m) => m.name);
@@ -244,7 +287,8 @@ export function nextBottlenecks(tasks: Task[], traders: TraderFull[], p: PlayerS
     }
   }
 
-  const avail = tasks.filter((t) => isAvailable(t, p));
+  const reachable = reachableSet(tasks, p);
+  const avail = tasks.filter((t) => isAvailable(t, p, reachable));
   out.push({
     type: avail.length ? 'quest' : 'clear',
     title: avail.length ? `${avail.length} quêtes faisables maintenant` : 'Aucune quête bloquée par le niveau',

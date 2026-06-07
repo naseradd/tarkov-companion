@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchTasks, type Task } from '@/lib/tarkov';
-import { taskInfo, negativeRep, factionMatch, type PlayerState, type TraderGate } from '@/lib/progression';
+import { taskInfo, negativeRep, factionMatch, reachableSet, type PlayerState, type TraderGate } from '@/lib/progression';
 import Spinner from '@/components/ui/Spinner.vue';
 import Card from '@/components/ui/Card.vue';
 import Chip from '@/components/ui/Chip.vue';
@@ -35,6 +35,7 @@ const player = computed<PlayerState>(() => ({
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 
+const reachable = computed(() => reachableSet(tasks.value ?? [], player.value));
 const factionTasks = computed(() => (tasks.value ?? []).filter((t) => factionMatch(t.factionName, game.faction)));
 
 const traders = computed(() => {
@@ -48,16 +49,17 @@ const mapOpts = computed(() => {
   return [{ value: '', label: 'Toutes les cartes' }, ...[...s].sort().map((m) => ({ value: m, label: m }))];
 });
 
-interface Row { task: Task; state: 'done' | 'available' | 'locked'; lockReasons: string[]; missing: { id: string; name: string }[]; traderGates: TraderGate[]; altBranch: { id: string; name: string }[]; neg: { trader: string; standing: number }[] }
+interface Row { task: Task; state: 'done' | 'available' | 'locked'; lockReasons: string[]; missing: { id: string; name: string }[]; activePrereqs: { id: string; name: string }[]; traderGates: TraderGate[]; altBranch: { id: string; name: string }[]; neg: { trader: string; standing: number }[] }
 
 const cmpLabel = (cmp: string) => (cmp.startsWith('<') ? '≤' : '');
 
 const rows = computed<Row[]>(() => {
   const q = search.value.trim().toLowerCase();
+  const reach = reachable.value;
   return factionTasks.value
     .map((task) => {
-      const info = taskInfo(task, player.value);
-      return { task, state: info.state, lockReasons: info.lockReasons, missing: info.missingPrereqs, traderGates: info.traderGates, altBranch: info.altBranch, neg: negativeRep(task) };
+      const info = taskInfo(task, player.value, reach);
+      return { task, state: info.state, lockReasons: info.lockReasons, missing: info.missingPrereqs, activePrereqs: info.activePrereqs, traderGates: info.traderGates, altBranch: info.altBranch, neg: negativeRep(task) };
     })
     .filter((r) => {
       if (trader.value && r.task.trader?.name !== trader.value) return false;
@@ -71,7 +73,8 @@ const rows = computed<Row[]>(() => {
 });
 
 const counts = computed(() => {
-  const all = factionTasks.value.map((t) => taskInfo(t, player.value).state);
+  const reach = reachable.value;
+  const all = factionTasks.value.map((t) => taskInfo(t, player.value, reach).state);
   return { available: all.filter((s) => s === 'available').length, done: all.filter((s) => s === 'done').length, total: all.length };
 });
 
@@ -172,6 +175,7 @@ const stateOpts = [
                 <Badge v-for="lr in r.lockReasons" :key="lr" variant="info">{{ lr }}</Badge>
               </div>
               <div v-if="r.missing.length" class="prereq">Après : {{ r.missing.map((m) => m.name).join(' · ') }}</div>
+              <div v-if="r.activePrereqs.length" class="prereq active">À lancer d'abord : {{ r.activePrereqs.map((m) => m.name).join(' · ') }}</div>
             </div>
 
             <div v-if="r.traderGates.length" class="gatebox">
@@ -278,6 +282,7 @@ const stateOpts = [
 .lockbox, .gatebox { background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 10px 12px; margin-top: 10px; }
 .lockreasons { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .prereq { font-size: 12.5px; color: var(--amber); }
+.prereq.active { color: var(--cyan); }
 .gatehint { font-size: 11.5px; color: var(--ink-3); margin: 4px 0 0; }
 .gatehint a { color: var(--ink-2); }
 .gatehint a:hover { color: var(--accent); }
