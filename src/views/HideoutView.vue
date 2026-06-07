@@ -3,7 +3,7 @@ import { computed, ref } from 'vue';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchHideout, fetchTasks, type HideoutStation, type Task } from '@/lib/tarkov';
-import { isAvailable, type PlayerState } from '@/lib/progression';
+import { isAvailable, reachableSet, type PlayerState } from '@/lib/progression';
 import { btcRoi, GPU_TIERS } from '@/lib/btc';
 import { buildTime, num, compact } from '@/lib/format';
 import Card from '@/components/ui/Card.vue';
@@ -33,10 +33,11 @@ const player = computed<PlayerState>(() => ({
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 // items requis par quêtes FAISABLES maintenant (flag "aussi quête" actionnable)
+const reachable = computed(() => reachableSet(tasks.value ?? [], player.value));
 const questItemIds = computed(() => {
   const s = new Set<string>();
   for (const t of tasks.value ?? []) {
-    if (!isAvailable(t, player.value)) continue;
+    if (!isAvailable(t, player.value, reachable.value)) continue;
     for (const o of t.objectives) if (o.items) for (const it of o.items) s.add(it.id);
   }
   return s;

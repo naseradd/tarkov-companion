@@ -6,7 +6,7 @@ import { useResource } from '@/composables/useResource';
 import { fetchMaps, fetchTasks, type TarkovMap, type Task } from '@/lib/tarkov';
 import { getMapData, providers, type ProviderId } from '@/lib/maps';
 import { distance } from '@/lib/format';
-import { isAvailable, type PlayerState } from '@/lib/progression';
+import { isAvailable, reachableSet, type PlayerState } from '@/lib/progression';
 import TacticalMap, { type LayerState } from '@/components/TacticalMap.vue';
 import RoutePanel, { type ExtractFull, type SpawnPt } from '@/components/RoutePanel.vue';
 import MapLegend from '@/components/MapLegend.vue';
@@ -70,6 +70,7 @@ const player = computed<PlayerState>(() => ({
   traderLL: game.traderLL,
   hideoutLevel: game.hideoutLevel,
 }));
+const reachable = computed(() => reachableSet(tasks.value ?? [], player.value));
 
 const spawns = computed<SpawnPt[]>(() => {
   const m = current.value;
@@ -116,7 +117,7 @@ const questMarkers = computed(() => {
   if (!m || !tasks.value) return [];
   const out: { x: number; z: number; label: string }[] = [];
   for (const t of tasks.value) {
-    if (!isAvailable(t, player.value)) continue;
+    if (!isAvailable(t, player.value, reachable.value)) continue;
     for (const o of t.objectives) {
       for (const z of o.zones ?? []) if (z.map?.normalizedName === m.normalizedName && z.position) out.push({ x: z.position.x, z: z.position.z, label: t.name });
       for (const pl of o.possibleLocations ?? []) if (pl.map?.normalizedName === m.normalizedName) for (const p of pl.positions) out.push({ x: p.x, z: p.z, label: t.name });
@@ -129,7 +130,7 @@ const questMarkers = computed(() => {
 const relevantTasks = computed(() => {
   const m = current.value;
   if (!m || !tasks.value) return [];
-  return tasks.value.filter((t) => isAvailable(t, player.value) &&
+  return tasks.value.filter((t) => isAvailable(t, player.value, reachable.value) &&
     (t.map?.normalizedName === m.normalizedName || t.objectives.some((o) => (o.maps ?? []).some((mm) => mm.normalizedName === m.normalizedName))));
 });
 const onThisMap = (o: { maps: { normalizedName: string }[] | null }, n: string) => !(o.maps?.length) || o.maps.some((mm) => mm.normalizedName === n);

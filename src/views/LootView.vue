@@ -5,7 +5,7 @@ import { useGameStore, FLEA_LEVEL } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchLoot, fetchTasks, fetchHideout, fetchCrafts, fetchBarters, type LootItem, type Task, type HideoutStation, type Craft, type BarterTrade } from '@/lib/tarkov';
 import { lootVerdict, craftProfit, barterValue, type ReservedBy } from '@/lib/economy';
-import { isAvailable, type PlayerState } from '@/lib/progression';
+import { isAvailable, reachableSet, type PlayerState } from '@/lib/progression';
 import { num, compact, shortDuration } from '@/lib/format';
 import DataTable, { type Column } from '@/components/ui/DataTable.vue';
 import Spinner from '@/components/ui/Spinner.vue';
@@ -35,10 +35,11 @@ const player = computed<PlayerState>(() => ({
 
 /* Réservations actionnables : quêtes FAISABLES maintenant + PROCHAIN niveau hideout.
    (la rétention long-terme de toutes les quêtes du wipe vit sur le Dashboard) */
+const reachable = computed(() => reachableSet(tasks.data.value ?? [], player.value));
 const questNeed = computed(() => {
   const m = new Map<string, { name: string; count: number }>();
   for (const t of tasks.data.value ?? []) {
-    if (!isAvailable(t, player.value)) continue;
+    if (!isAvailable(t, player.value, reachable.value)) continue;
     for (const o of t.objectives) if (o.items) for (const it of o.items) if (!m.has(it.id)) m.set(it.id, { name: t.name, count: o.count ?? 1 });
   }
   return m;
