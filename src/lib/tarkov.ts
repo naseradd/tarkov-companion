@@ -40,7 +40,7 @@ export interface TarkovMap {
 
 /* ---- Quêtes ---- */
 export interface Trader { id?: string; name: string; normalizedName: string; imageLink: string | null; }
-export interface ObjItem { id: string; name: string; shortName: string; iconLink: string | null; wikiLink?: string | null; }
+export interface ObjItem { id: string; name: string; shortName: string; iconLink: string | null; wikiLink?: string | null; backgroundColor?: string | null; }
 export interface TaskZone { id: string; map: { normalizedName: string } | null; position: Position | null; }
 export interface TaskObjective {
   id: string;
@@ -250,7 +250,7 @@ const Q_TASKS = `{ tasks(gameMode: regular){ id name normalizedName experience m
   finishRewards{ traderStanding{ trader{ name } standing } }
   objectives{ id type description optional maps{ name normalizedName }
     ... on TaskObjectiveBasic{ zones{ id map{ normalizedName } position{ x z } } }
-    ... on TaskObjectiveItem{ items{ id name shortName iconLink wikiLink } count foundInRaid requiredKeys{ id name shortName iconLink wikiLink } zones{ id map{ normalizedName } position{ x z } } }
+    ... on TaskObjectiveItem{ items{ id name shortName iconLink wikiLink backgroundColor } count foundInRaid requiredKeys{ id name shortName iconLink wikiLink } zones{ id map{ normalizedName } position{ x z } } }
     ... on TaskObjectiveQuestItem{ questItem{ name } count possibleLocations{ map{ normalizedName } positions{ x z } } zones{ id map{ normalizedName } position{ x z } } requiredKeys{ id name shortName iconLink wikiLink } }
     ... on TaskObjectiveMark{ markerItem{ id name shortName iconLink wikiLink } zones{ id map{ normalizedName } position{ x z } } requiredKeys{ id name shortName iconLink wikiLink } }
     ... on TaskObjectiveExtract{ exitName exitStatus requiredKeys{ id name shortName iconLink wikiLink } }

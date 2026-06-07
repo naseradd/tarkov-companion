@@ -36,6 +36,16 @@ const player = computed<PlayerState>(() => ({
 /* Réservations actionnables : quêtes FAISABLES maintenant + PROCHAIN niveau hideout.
    (la rétention long-terme de toutes les quêtes du wipe vit sur le Dashboard) */
 const reachable = computed(() => reachableSet(tasks.data.value ?? [], player.value));
+
+// Items remis au Collector (Kappa) : à ne jamais vendre par erreur, même si la quête
+// est encore verrouillée (elle a 70 prérequis, donc jamais "available" en milieu de wipe).
+const collectorItemIds = computed(() => {
+  const s = new Set<string>();
+  const coll = (tasks.data.value ?? []).find((t) => t.normalizedName === 'collector');
+  if (coll) for (const o of coll.objectives) if (o.items) for (const it of o.items) s.add(it.id);
+  return s;
+});
+
 const questNeed = computed(() => {
   const m = new Map<string, { name: string; count: number }>();
   for (const t of tasks.data.value ?? []) {
@@ -69,13 +79,13 @@ const lootRows = computed(() => {
         name: it.shortName || it.name, size: `${it.width}×${it.height}`, slots: v.slots,
         traderName: v.traderBest?.name ?? '—', traderPrice: v.traderBest?.price ?? 0,
         flea: v.fleaNet, perSlot: v.perSlot, channel: v.channel, reason: v.reason,
-        delta: v.delta48, reserved: !!(qn || hn),
+        delta: v.delta48, reserved: !!(qn || hn), collector: collectorItemIds.value.has(it.id),
       };
     })
     .filter((r) => {
-      if (onlyReserved.value && !r.reserved) return false;
+      if (onlyReserved.value && !r.reserved && !r.collector) return false;
       if (q && !r.name.toLowerCase().includes(q)) return false;
-      return r.perSlot > 0 || r.reserved;
+      return r.perSlot > 0 || r.reserved || r.collector;
     });
 });
 
@@ -152,6 +162,7 @@ const tabOpts = [
           <div class="namecell">
             <IconBox :src="row.icon" :bg="row.bg" :size="32" />
             <a v-if="row.wiki" :href="row.wiki" target="_blank">{{ row.name }}</a><span v-else>{{ row.name }}</span>
+            <Badge v-if="row.collector" variant="kappa" title="Remis au Collector (Kappa) — garder en FiR">Collector</Badge>
           </div>
         </template>
         <template #cell-traderPrice="{ row }">

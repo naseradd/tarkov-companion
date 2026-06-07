@@ -9,6 +9,7 @@ import { spineChapters, sideChapters, ENDINGS } from '@/lib/storyline';
 import Card from '@/components/ui/Card.vue';
 import Badge from '@/components/ui/Badge.vue';
 import ProgressRing from '@/components/ui/ProgressRing.vue';
+import IconBox from '@/components/ui/IconBox.vue';
 import SegmentedControl from '@/components/ui/SegmentedControl.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 import Reveal from '@/components/ui/Reveal.vue';
@@ -47,6 +48,16 @@ const finalRemaining = computed(() => {
   if (!finalQuest.value) return 0;
   return (finalQuest.value.taskRequirements ?? []).filter((r) => r.task && !game.completed.has(r.task.id)).length;
 });
+
+// Checklist des remises Collector (Kappa) : chaque objectif = 1 item FiR à conserver.
+const collectorItems = computed(() => {
+  if (arc.value !== 'kappa' || !finalQuest.value) return [];
+  return finalQuest.value.objectives
+    .filter((o) => o.items?.length)
+    .map((o) => ({ objId: o.id, item: o.items![0], count: o.count ?? 1 }));
+});
+const collectorDone = computed(() => collectorItems.value.filter((c) => game.objDone(c.objId)).length);
+const showCollector = ref(false);
 
 const arcBlurb = computed(() =>
   arc.value === 'kappa'
@@ -137,6 +148,30 @@ const arcBlurb = computed(() =>
         <RouterLink :to="`/quetes?q=${encodeURIComponent(finalQuest.name)}`" class="finale-go">Voir →</RouterLink>
       </Card></Reveal>
 
+      <!-- Checklist Collector (les items FiR à mettre de côté pour le Kappa) -->
+      <Reveal v-if="collectorItems.length"><Card class="coll" tone="surface">
+        <button class="coll-head" @click="showCollector = !showCollector">
+          <span class="kicker">Checklist Collector — items FiR à garder</span>
+          <span class="coll-prog num">{{ collectorDone }} / {{ collectorItems.length }}</span>
+          <span class="coll-caret">{{ showCollector ? '−' : '+' }}</span>
+        </button>
+        <div class="coll-bar"><span :style="{ width: (collectorDone / collectorItems.length * 100) + '%' }" /></div>
+        <p class="coll-warn">⚠ Ne jamais déposer ces objets dans le conteneur sécurisé : ça détruit le statut FiR.</p>
+        <div v-if="showCollector" class="coll-grid">
+          <button
+            v-for="c in collectorItems"
+            :key="c.objId"
+            class="coll-item"
+            :class="{ on: game.objDone(c.objId) }"
+            @click="game.toggleObjective(c.objId)"
+          >
+            <span class="coll-check">{{ game.objDone(c.objId) ? '✓' : '' }}</span>
+            <IconBox :src="c.item.iconLink" :bg="c.item.backgroundColor" :size="34" />
+            <span class="coll-name">{{ c.item.shortName || c.item.name }}</span>
+          </button>
+        </div>
+      </Card></Reveal>
+
       <Reveal :index="2" tag="h3" class="section-title sm">Ton front actuel</Reveal>
       <div v-if="data.frontier.length" class="front">
         <RouterLink
@@ -221,6 +256,24 @@ const arcBlurb = computed(() =>
 .finale-d b { color: var(--amber); }
 .finale-go { flex: 0 0 auto; font-size: 14px; color: var(--accent); font-weight: 600; }
 .finale-go:hover { text-decoration: underline; }
+
+/* collector checklist */
+.coll { margin-bottom: 22px; }
+.coll-head { width: 100%; display: flex; align-items: center; gap: 12px; background: none; border: none; cursor: pointer; padding: 0; text-align: left; }
+.coll-head .kicker { flex: 1; }
+.coll-prog { font-family: var(--font-mono); font-size: 14px; font-weight: 700; color: var(--amber); }
+.coll-caret { font-family: var(--font-mono); color: var(--ink-3); font-size: 16px; width: 16px; text-align: center; }
+.coll-bar { height: 5px; background: var(--canvas); border-radius: var(--r-pill); overflow: hidden; margin: 10px 0 8px; }
+.coll-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--amber)); border-radius: var(--r-pill); transition: width 0.6s var(--ease-out-expo); }
+.coll-warn { font-size: 11.5px; color: var(--amber); margin: 0 0 12px; }
+.coll-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 7px; }
+.coll-item { display: flex; align-items: center; gap: 9px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 7px 9px; cursor: pointer; text-align: left; transition: border-color var(--t1) var(--ease), opacity var(--t1) var(--ease); }
+.coll-item:hover { border-color: var(--hairline-2); }
+.coll-item.on { opacity: 0.5; }
+.coll-check { width: 18px; height: 18px; flex: 0 0 auto; border-radius: 5px; border: 1.5px solid var(--hairline-2); background: var(--canvas); color: var(--ink-on-accent); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+.coll-item.on .coll-check { background: var(--accent); border-color: var(--accent); }
+.coll-name { font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coll-item.on .coll-name { text-decoration: line-through; color: var(--ink-3); }
 
 .front { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 9px; }
 .fq { display: flex; align-items: center; gap: 12px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 10px 13px; transition: border-color var(--t1) var(--ease), transform var(--t1) var(--ease-out-quart); }
