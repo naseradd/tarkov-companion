@@ -85,6 +85,7 @@ export interface Task {
   map: { name: string; normalizedName: string } | null;
   taskRequirements: TaskReq[] | null;
   traderRequirements: TaskTraderReq[] | null;
+  requiredPrestige: { prestigeLevel: number } | null;
   finishRewards: { traderStanding: TraderStanding[] | null } | null;
   objectives: TaskObjective[];
 }
@@ -247,6 +248,7 @@ const Q_TASKS = `{ tasks(gameMode: regular){ id name normalizedName experience m
   trader{ id name normalizedName imageLink } map{ name normalizedName }
   taskRequirements{ task{ id name } status }
   traderRequirements{ trader{ name normalizedName } requirementType compareMethod value }
+  requiredPrestige{ prestigeLevel }
   finishRewards{ traderStanding{ trader{ name } standing } }
   objectives{ id type description optional maps{ name normalizedName }
     ... on TaskObjectiveBasic{ zones{ id map{ normalizedName } position{ x z } } }

@@ -63,6 +63,15 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
           <SegmentedControl :model-value="game.faction" :options="factionOpts" size="sm"
             @update:model-value="game.setFaction($event as any)" />
         </div>
+        <div class="field-row">
+          <label>Prestige</label>
+          <div class="lvl small">
+            <button class="step" @click="game.setPrestige(game.prestige - 1)" :disabled="game.prestige <= 0">–</button>
+            <span class="hn num">{{ game.prestige }}</span>
+            <button class="step" @click="game.setPrestige(game.prestige + 1)" :disabled="game.prestige >= 5">+</button>
+          </div>
+          <span class="hint">Débloque les quêtes « New Beginning »</span>
+        </div>
       </div>
     </Card></Reveal>
 

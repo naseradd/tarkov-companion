@@ -65,7 +65,7 @@ watch(availProviders, (ps) => { if (ps.length && !ps.some((p) => p.id === provid
 
 const player = computed<PlayerState>(() => ({
   level: game.level,
-  faction: game.faction,
+  faction: game.faction, prestige: game.prestige,
   completed: game.completed,
   traderLL: game.traderLL,
   hideoutLevel: game.hideoutLevel,
@@ -257,8 +257,12 @@ const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts
             />
           </Card>
 
-          <Card v-if="bringKeys.length || bringItems.length">
-            <span class="kicker">À emporter sur cette carte</span>
+          <Card v-if="bringKeys.length || bringItems.length || relevantTasks.length">
+            <div class="bl-head">
+              <span class="kicker">À emporter sur cette carte</span>
+              <span class="bl-count num">{{ relevantTasks.length }} quêtes</span>
+            </div>
+            <p v-if="bringItems.some((i) => i.fir)" class="bl-firwarn">⚠ Items <b>FiR</b> : porte-les dans ton rig, jamais dans le conteneur sécurisé.</p>
 
             <div v-if="bringKeys.length" class="bl-group">
               <div class="bl-h">🔑 Clés <span class="bl-n num">{{ bringKeys.length }}</span></div>
@@ -308,6 +312,10 @@ const counts = computed(() => ({ spawns: spawns.value.length, extracts: extracts
 .side { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 8px; }
 .meta { display: flex; gap: 8px; flex-wrap: wrap; }
 .note { font-size: 12px; color: var(--ink-3); line-height: 1.6; margin: 12px 0 0; }
+.bl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.bl-count { font-size: 11px; color: var(--ink-3); background: var(--surface-2); border-radius: var(--r-pill); padding: 2px 9px; }
+.bl-firwarn { font-size: 11.5px; color: var(--amber); background: var(--amber-soft); border: 1px solid #5c4517; border-radius: var(--r-sm); padding: 7px 10px; margin: 10px 0 0; }
+.bl-firwarn b { color: var(--amber); }
 .bl-group { margin-top: 12px; }
 .bl-group + .bl-group { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
 .bl-h { font-size: 12.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 9px; display: flex; align-items: center; gap: 7px; }

@@ -29,7 +29,7 @@ const crafts = useResource<Craft[]>('crafts', fetchCrafts);
 const barters = useResource<BarterTrade[]>('barters', fetchBarters);
 
 const player = computed<PlayerState>(() => ({
-  level: game.level, faction: game.faction, completed: game.completed,
+  level: game.level, faction: game.faction, prestige: game.prestige, completed: game.completed,
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 

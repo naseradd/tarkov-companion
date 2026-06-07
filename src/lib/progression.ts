@@ -7,6 +7,7 @@ import type { Faction } from '@/lib/tarkov';
 export interface PlayerState {
   level: number;
   faction: Faction;
+  prestige: number;
   completed: Set<string>;
   traderLL: (normalizedName: string) => number;
   hideoutLevel: (normalizedName: string) => number;
@@ -78,6 +79,7 @@ const reqIsFailedOnly = (st: string[]) => st.includes('failed') && !st.includes(
 function hardGatesMet(task: Task, p: PlayerState): boolean {
   if (!factionMatch(task.factionName, p.faction)) return false;
   if (task.minPlayerLevel && p.level < task.minPlayerLevel) return false;
+  if (task.requiredPrestige && task.requiredPrestige.prestigeLevel > p.prestige) return false;
   for (const tr of task.traderRequirements ?? []) {
     if (tr.trader && tr.requirementType === 'level' && !compareNum(p.traderLL(tr.trader.normalizedName), tr.compareMethod, tr.value)) return false;
   }
@@ -108,6 +110,7 @@ export function taskInfo(task: Task, p: PlayerState, reachable?: Set<string>): T
 
   if (!factionMatch(task.factionName, p.faction)) reasons.push(`Faction ${task.factionName}`);
   if (task.minPlayerLevel && p.level < task.minPlayerLevel) reasons.push(`Niveau ${task.minPlayerLevel} requis`);
+  if (task.requiredPrestige && task.requiredPrestige.prestigeLevel > p.prestige) reasons.push(`Prestige ${task.requiredPrestige.prestigeLevel}`);
 
   for (const r of task.taskRequirements ?? []) {
     if (!r.task) continue;
@@ -183,6 +186,44 @@ export function storyArc(tasks: Task[], p: PlayerState, kind: 'kappa' | 'lightke
     frontier,
     locked: Math.max(0, arc.length - done - frontier.length),
   };
+}
+
+/* ----------------- Ordre recommandé d'un arc -------------------- */
+// Quêtes non faites d'un arc (kappa/LK), triées par profondeur de dépendance puis niveau :
+// un « chemin » lisible plutôt qu'une liste plate. profondeur = plus longue chaîne de
+// prérequis (statut complete) à l'intérieur de l'arc.
+
+export interface OrderedQuest { task: Task; depth: number; state: TaskState; }
+
+export function recommendedOrder(tasks: Task[], p: PlayerState, kind: 'kappa' | 'lightkeeper'): OrderedQuest[] {
+  const flag = (t: Task) => (kind === 'kappa' ? t.kappaRequired : t.lightkeeperRequired);
+  const arc = tasks.filter(flag);
+  const arcIds = new Set(arc.map((t) => t.id));
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const cache = new Map<string, number>();
+  const depth = (t: Task, seen: Set<string>): number => {
+    const hit = cache.get(t.id);
+    if (hit != null) return hit;
+    if (seen.has(t.id)) return 0; // garde-fou cycle
+    seen.add(t.id);
+    let d = 0;
+    for (const r of t.taskRequirements ?? []) {
+      const pre = r.task ? byId.get(r.task.id) : undefined;
+      if (pre && arcIds.has(pre.id)) d = Math.max(d, 1 + depth(pre, seen));
+    }
+    seen.delete(t.id);
+    cache.set(t.id, d);
+    return d;
+  };
+  const reachable = reachableSet(tasks, p);
+  return arc
+    .filter((t) => !p.completed.has(t.id))
+    .map((t) => ({ task: t, depth: depth(t, new Set()), state: taskInfo(t, p, reachable).state }))
+    .sort((a, b) =>
+      (a.task.minPlayerLevel ?? 0) - (b.task.minPlayerLevel ?? 0) ||
+      a.depth - b.depth ||
+      a.task.name.localeCompare(b.task.name),
+    );
 }
 
 /* ------------------- Réputation par marchand --------------------- */

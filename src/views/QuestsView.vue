@@ -31,7 +31,7 @@ const expanded = ref<Set<string>>(new Set());
 watch(() => route.query.q, (q) => { if (q) search.value = q as string; });
 
 const player = computed<PlayerState>(() => ({
-  level: game.level, faction: game.faction, completed: game.completed,
+  level: game.level, faction: game.faction, prestige: game.prestige, completed: game.completed,
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 
@@ -163,6 +163,7 @@ const stateOpts = [
               <Badge v-else-if="r.state === 'locked'" variant="info">verrouillée</Badge>
               <Badge v-if="r.task.kappaRequired" variant="kappa">Kappa</Badge>
               <Badge v-if="r.task.lightkeeperRequired" variant="lk">LK</Badge>
+              <Badge v-if="r.task.requiredPrestige" variant="purple">Prestige {{ r.task.requiredPrestige.prestigeLevel }}</Badge>
               <Badge v-for="n in r.neg" :key="n.trader" variant="danger">{{ n.standing }} {{ n.trader }}</Badge>
             </div>
             <span class="caret">{{ expanded.has(r.task.id) ? '−' : '+' }}</span>

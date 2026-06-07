@@ -17,7 +17,7 @@ const tasks = useResource<Task[]>('tasks', fetchTasks);
 const traders = useResource<TraderFull[]>('traders', fetchTraders);
 
 const player = computed<PlayerState>(() => ({
-  level: game.level, faction: game.faction, completed: game.completed,
+  level: game.level, faction: game.faction, prestige: game.prestige, completed: game.completed,
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 const ready = computed(() => !tasks.loading.value && !traders.loading.value);

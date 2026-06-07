@@ -26,7 +26,7 @@ const tip = computed(() => traderTip(normName.value));
 const ready = computed(() => !shops.loading.value);
 
 const player = computed<PlayerState>(() => ({
-  level: game.level, faction: game.faction, completed: game.completed,
+  level: game.level, faction: game.faction, prestige: game.prestige, completed: game.completed,
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 

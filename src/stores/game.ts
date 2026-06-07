@@ -11,6 +11,7 @@ const LS = {
   done: 'eft.completedTasks',
   objDone: 'eft.objectivesDone',
   density: 'eft.density',
+  prestige: 'eft.prestige',
 };
 
 function loadSet(key: string): Set<string> {
@@ -40,6 +41,7 @@ export const useGameStore = defineStore('game', {
     completed: loadSet(LS.done), // task IDs
     objectivesDone: loadSet(LS.objDone), // objective IDs
     density: (localStorage.getItem(LS.density) as Density) || ('regular' as Density),
+    prestige: Number(localStorage.getItem(LS.prestige)) || 0, // niveau de prestige (0 = aucun)
   }),
 
   getters: {
@@ -83,6 +85,10 @@ export const useGameStore = defineStore('game', {
     setDensity(d: Density) {
       this.density = d;
       localStorage.setItem(LS.density, d);
+    },
+    setPrestige(n: number) {
+      this.prestige = Math.max(0, Math.min(5, Math.round(n) || 0));
+      localStorage.setItem(LS.prestige, String(this.prestige));
     },
     /** New wipe / prestige : reset progression (garde la faction + density). */
     resetProgress() {

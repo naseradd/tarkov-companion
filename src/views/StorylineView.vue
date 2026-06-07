@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchTasks, type Task } from '@/lib/tarkov';
-import { storyArc, taskInfo, reachableSet, type PlayerState } from '@/lib/progression';
+import { storyArc, taskInfo, reachableSet, recommendedOrder, type PlayerState } from '@/lib/progression';
 import { spineChapters, sideChapters, ENDINGS } from '@/lib/storyline';
 import Card from '@/components/ui/Card.vue';
 import Badge from '@/components/ui/Badge.vue';
@@ -30,7 +30,7 @@ const arcOpts = [
 ];
 
 const player = computed<PlayerState>(() => ({
-  level: game.level, faction: game.faction, completed: game.completed,
+  level: game.level, faction: game.faction, prestige: game.prestige, completed: game.completed,
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 const reachable = computed(() => reachableSet(tasks.data.value ?? [], player.value));
@@ -58,6 +58,10 @@ const collectorItems = computed(() => {
 });
 const collectorDone = computed(() => collectorItems.value.filter((c) => game.objDone(c.objId)).length);
 const showCollector = ref(false);
+
+// Ordre recommandé : toutes les quêtes restantes de l'arc, triées dépendance + niveau.
+const order = computed(() => recommendedOrder(tasks.data.value ?? [], player.value, arc.value));
+const showOrder = ref(false);
 
 const arcBlurb = computed(() =>
   arc.value === 'kappa'
@@ -198,6 +202,32 @@ const arcBlurb = computed(() =>
       <EmptyState v-else icon="✓" title="Aucune quête de cet arc au front">
         Monte ton niveau et ta loyauté marchands pour débloquer la suite.
       </EmptyState>
+
+      <!-- Ordre recommandé : le chemin complet de l'arc, trié dépendance + niveau -->
+      <Reveal v-if="order.length"><Card class="order" tone="surface">
+        <button class="order-head" @click="showOrder = !showOrder">
+          <span class="kicker">Ordre recommandé — chemin complet ({{ order.length }} restantes)</span>
+          <span class="order-caret">{{ showOrder ? '−' : '+' }}</span>
+        </button>
+        <p class="order-hint">Trié par niveau requis puis par profondeur de dépendance. Les <b>dispo</b> sont faisables maintenant.</p>
+        <ol v-if="showOrder" class="order-list">
+          <RouterLink
+            v-for="(o, i) in order"
+            :key="o.task.id"
+            :to="`/quetes?q=${encodeURIComponent(o.task.name)}`"
+            class="ol-row"
+            :class="o.state"
+          >
+            <span class="ol-n num">{{ i + 1 }}</span>
+            <span class="ol-name">{{ o.task.name }}</span>
+            <span class="ol-meta">
+              <span class="ol-trader">{{ o.task.trader?.name }}</span>
+              <span v-if="o.task.minPlayerLevel" class="num">niv {{ o.task.minPlayerLevel }}</span>
+            </span>
+            <Badge :variant="o.state === 'available' ? 'good' : 'info'">{{ o.state === 'available' ? 'dispo' : 'verrou.' }}</Badge>
+          </RouterLink>
+        </ol>
+      </Card></Reveal>
     </template>
   </section>
 </template>
@@ -283,4 +313,21 @@ const arcBlurb = computed(() =>
 .fq-name { font-size: 14px; color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fq-sub { font-size: 11.5px; color: var(--ink-3); display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
 .fq-badges { display: flex; gap: 4px; flex: 0 0 auto; }
+
+/* ordre recommandé */
+.order { margin-top: 18px; }
+.order-head { width: 100%; display: flex; align-items: center; gap: 12px; background: none; border: none; cursor: pointer; padding: 0; text-align: left; }
+.order-head .kicker { flex: 1; }
+.order-caret { font-family: var(--font-mono); color: var(--ink-3); font-size: 16px; width: 16px; text-align: center; }
+.order-hint { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
+.order-hint b { color: var(--positive); }
+.order-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ol-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: var(--r-sm); transition: background var(--t1) var(--ease); }
+.ol-row:hover { background: var(--surface-2); }
+.ol-row.locked { opacity: 0.6; }
+.ol-n { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); width: 26px; text-align: right; flex: 0 0 auto; }
+.ol-name { flex: 1; min-width: 0; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ol-meta { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; font-size: 11px; color: var(--ink-3); }
+.ol-trader { color: var(--ink-3); }
+@media (max-width: 640px) { .ol-meta { display: none; } }
 </style>

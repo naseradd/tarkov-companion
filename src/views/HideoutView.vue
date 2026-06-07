@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
-import { fetchHideout, fetchTasks, type HideoutStation, type Task } from '@/lib/tarkov';
+import { fetchHideout, fetchTasks, fetchTraders, type HideoutStation, type Task, type TraderFull } from '@/lib/tarkov';
 import { isAvailable, reachableSet, type PlayerState } from '@/lib/progression';
 import { btcRoi, GPU_TIERS } from '@/lib/btc';
 import { buildTime, num, compact } from '@/lib/format';
@@ -16,6 +16,7 @@ import Reveal from '@/components/ui/Reveal.vue';
 const game = useGameStore();
 const { data: stations, loading, error } = useResource<HideoutStation[]>('hideout', fetchHideout);
 const { data: tasks } = useResource<Task[]>('tasks', fetchTasks);
+const { data: traders } = useResource<TraderFull[]>('traders', fetchTraders);
 const expanded = ref<Set<string>>(new Set());
 function toggle(id: string) { expanded.value.has(id) ? expanded.value.delete(id) : expanded.value.add(id); expanded.value = new Set(expanded.value); }
 
@@ -29,7 +30,7 @@ const ordered = computed(() => {
 });
 
 const player = computed<PlayerState>(() => ({
-  level: game.level, faction: game.faction, completed: game.completed,
+  level: game.level, faction: game.faction, prestige: game.prestige, completed: game.completed,
   traderLL: game.traderLL, hideoutLevel: game.hideoutLevel,
 }));
 // items requis par quêtes FAISABLES maintenant (flag "aussi quête" actionnable)
@@ -60,6 +61,33 @@ const shoppingList = computed(() => {
   return [...m.values()].sort((a, b) => b.price * b.count - a.price * a.count);
 });
 const shoppingTotal = computed(() => shoppingList.value.reduce((acc, e) => acc + e.price * e.count, 0));
+
+// Ordre de construction : prochain niveau non construit de chaque station, classé
+// par constructibilité (prérequis station + LL marchand satisfaits) puis valeur.
+interface BuildStep { station: string; norm: string; icon: string | null; level: number; buildable: boolean; blockers: string[]; cost: number; }
+const buildOrder = computed<BuildStep[]>(() => {
+  const sts = stations.value ?? [];
+  const nameToNorm = new Map(sts.map((s) => [s.name, s.normalizedName]));
+  const traderNorm = new Map((traders.value ?? []).map((t) => [t.name, t.normalizedName]));
+  const steps: BuildStep[] = [];
+  for (const s of sts) {
+    const cur = game.hideoutLevel(s.normalizedName);
+    const next = s.levels.find((l) => l.level === cur + 1);
+    if (!next) continue;
+    const blockers: string[] = [];
+    for (const sr of next.stationLevelRequirements ?? []) {
+      const norm = nameToNorm.get(sr.station.name);
+      if (!norm || game.hideoutLevel(norm) < sr.level) blockers.push(`${sr.station.name} N${sr.level}`);
+    }
+    for (const tr of next.traderRequirements ?? []) {
+      const norm = traderNorm.get(tr.trader.name);
+      if (!norm || game.traderLL(norm) < tr.level) blockers.push(`${tr.trader.name} LL${tr.level}`);
+    }
+    const cost = next.itemRequirements.reduce((a, r) => a + (r.item.avg24hPrice ?? 0) * r.count, 0);
+    steps.push({ station: s.name, norm: s.normalizedName, icon: s.imageLink, level: next.level, buildable: blockers.length === 0, blockers, cost });
+  }
+  return steps.sort((a, b) => Number(b.buildable) - Number(a.buildable) || a.blockers.length - b.blockers.length || b.cost - a.cost);
+});
 
 // BTC ROI
 const gpuPrice = ref(190000);
@@ -128,6 +156,27 @@ const guides = [
           </tbody>
         </table>
       </Card>
+    </Reveal>
+
+    <h2 class="section-title" style="margin-top: 28px">Ordre de construction</h2>
+    <p class="sub-lead">Prochain palier de chaque station, classé par ce que tu peux bâtir maintenant. Les bloqués affichent leurs prérequis.</p>
+    <Spinner v-if="loading" label="Chargement…" />
+    <Reveal v-else tag="div" class="bo-grid">
+      <div v-for="b in buildOrder" :key="b.norm" class="bo" :class="{ ready: b.buildable }">
+        <img v-if="b.icon" :src="b.icon" class="bo-img" :alt="b.station" />
+        <div class="bo-main">
+          <div class="bo-name">{{ b.station }} <span class="num bo-lv">→ N{{ b.level }}</span></div>
+          <div v-if="b.buildable" class="bo-status ok">Constructible maintenant · {{ compact(b.cost) }} ₽</div>
+          <div v-else class="bo-status">Bloqué : {{ b.blockers.join(' · ') }}</div>
+        </div>
+        <button
+          v-if="b.buildable"
+          class="bo-build"
+          @click="game.setHideoutLevel(b.norm, b.level)"
+          title="Marquer ce palier comme construit"
+        >＋</button>
+      </div>
+      <p v-if="!buildOrder.length" class="muted">Tout est construit. ✓</p>
     </Reveal>
 
     <h2 class="section-title" style="margin-top: 28px">Stations & prérequis</h2>
@@ -228,5 +277,19 @@ const guides = [
 .lv-req { display: flex; flex-wrap: wrap; gap: 5px; }
 .muted { color: var(--ink-3); font-size: 13px; }
 .err { color: var(--red); font-family: var(--font-mono); }
+
+.sub-lead { font-size: 13px; color: var(--ink-3); margin: -4px 0 14px; max-width: 70ch; }
+.bo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 9px; }
+.bo { display: flex; align-items: center; gap: 11px; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 9px 12px; transition: border-color var(--t1) var(--ease); }
+.bo.ready { border-color: var(--accent-dim); background: linear-gradient(100deg, var(--accent-soft), transparent 70%), var(--surface-2); }
+.bo-img { width: 34px; height: 34px; border-radius: var(--r-xs); object-fit: contain; background: var(--slot-base); border: 1px solid var(--hairline-2); flex: 0 0 auto; }
+.bo-main { flex: 1; min-width: 0; }
+.bo-name { font-size: 13.5px; color: var(--ink); font-weight: 500; }
+.bo-lv { color: var(--ink-3); font-weight: 400; }
+.bo-status { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bo-status.ok { color: var(--accent); }
+.bo-build { flex: 0 0 auto; width: 28px; height: 28px; border-radius: var(--r-sm); border: 1px solid var(--accent-dim); background: var(--accent-soft); color: var(--accent); cursor: pointer; font-size: 16px; line-height: 1; transition: all var(--t1) var(--ease); }
+.bo-build:hover { background: var(--accent); color: var(--ink-on-accent); }
+
 @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
 </style>
