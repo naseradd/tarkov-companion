@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue';
+import { useGameStore } from '@/stores/game';
+import { maybeAutoPull, scheduleAutoPush } from '@/lib/persist';
 import AppHeader from '@/components/AppHeader.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import CommandPalette from '@/components/CommandPalette.vue';
 
 const paletteOpen = ref(false);
+const game = useGameStore();
 
 function onKey(e: KeyboardEvent) {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -12,7 +15,13 @@ function onKey(e: KeyboardEvent) {
     paletteOpen.value = true;
   }
 }
-onMounted(() => window.addEventListener('keydown', onKey));
+onMounted(() => {
+  window.addEventListener('keydown', onKey);
+  // Sync gist : pull au démarrage si la sauvegarde distante est plus récente, puis
+  // push débouncé après chaque modification de progression (no-op si non configuré).
+  maybeAutoPull().then((applied) => { if (applied) location.reload(); });
+  game.$subscribe(() => scheduleAutoPush());
+});
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 </script>
 

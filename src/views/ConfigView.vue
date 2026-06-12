@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { useGameStore } from '@/stores/game';
 import { useResource } from '@/composables/useResource';
 import { fetchTraders, fetchHideout, type TraderFull, type HideoutStation } from '@/lib/tarkov';
+import { exportToFile, importFromFile, getSync, pushToGist, pullFromGist, applySnapshot, disconnectSync } from '@/lib/persist';
 import Card from '@/components/ui/Card.vue';
 import Spinner from '@/components/ui/Spinner.vue';
 import Stat from '@/components/ui/Stat.vue';
@@ -32,6 +33,65 @@ const factionOpts = [
 
 const confirmReset = ref(false);
 function doReset() { game.resetProgress(); confirmReset.value = false; }
+
+/* ------------------- Sauvegarde & synchronisation ------------------- */
+const fileEl = ref<HTMLInputElement | null>(null);
+const tokenInput = ref('');
+const sync = ref(getSync());
+const syncMsg = ref('');
+const syncBusy = ref(false);
+
+async function doImport(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0];
+  if (!f) return;
+  try {
+    await importFromFile(f);
+    location.reload(); // réhydrate le store depuis le localStorage importé
+  } catch (err) {
+    syncMsg.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+async function connectGist() {
+  const token = tokenInput.value.trim() || sync.value.token || '';
+  if (!token) { syncMsg.value = 'Colle un token GitHub (scope « gist » uniquement).'; return; }
+  syncBusy.value = true;
+  syncMsg.value = '';
+  try {
+    await pushToGist(token);
+    tokenInput.value = '';
+    sync.value = getSync();
+    syncMsg.value = 'Synchronisé. La progression sera poussée automatiquement après chaque changement.';
+  } catch (err) {
+    syncMsg.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+async function pullNow() {
+  const { token, gistId } = sync.value;
+  if (!token || !gistId) return;
+  syncBusy.value = true;
+  try {
+    const remote = await pullFromGist(token, gistId);
+    if (!remote) { syncMsg.value = 'Gist vide — pousse d’abord depuis l’appareil à jour.'; return; }
+    applySnapshot(remote);
+    location.reload();
+  } catch (err) {
+    syncMsg.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    syncBusy.value = false;
+  }
+}
+
+function doDisconnect() {
+  disconnectSync();
+  sync.value = getSync();
+  syncMsg.value = 'Sync désactivée. Le gist n’est pas supprimé côté GitHub.';
+}
+
+const lastSync = computed(() => (sync.value.savedAt ? new Date(sync.value.savedAt).toLocaleString('fr-FR') : null));
 </script>
 
 <template>
@@ -121,8 +181,45 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
       </div>
     </Card></Reveal>
 
-    <!-- QUÊTES + RESET -->
+    <!-- SAUVEGARDE & SYNC -->
     <Reveal :index="3"><Card class="block">
+      <div class="block-head">
+        <span class="kicker">Sauvegarde & synchronisation</span>
+        <span class="hint">localStorage = lié à CE navigateur. Exporte ou synchronise pour ne jamais perdre le tracking.</span>
+      </div>
+
+      <div class="save-row">
+        <button class="btn ghost" @click="exportToFile()">⬇ Exporter (.json)</button>
+        <button class="btn ghost" @click="fileEl?.click()">⬆ Importer</button>
+        <input ref="fileEl" type="file" accept="application/json" class="hidden-file" @change="doImport" />
+        <span v-if="lastSync" class="hint">Dernière sauvegarde : <b class="num">{{ lastSync }}</b></span>
+      </div>
+
+      <div class="gist">
+        <div class="gist-head">
+          <span class="gist-title">Sync automatique multi-appareils — Gist GitHub privé</span>
+          <Badge v-if="sync.gistId" variant="good">connecté</Badge>
+          <Badge v-else variant="info">désactivé</Badge>
+        </div>
+        <p class="gist-hint">
+          Crée un <a href="https://github.com/settings/tokens/new?scopes=gist&description=EFT%20Field%20Terminal%20sync" target="_blank">token GitHub</a>
+          avec le scope <b>gist uniquement</b>. Il reste dans ce navigateur, la sauvegarde part dans un gist privé de ton compte.
+          Push auto après chaque changement, récupération au démarrage si un autre appareil est plus récent.
+        </p>
+        <div class="gist-row">
+          <input v-model="tokenInput" type="password" class="tok-in" :placeholder="sync.gistId ? 'Token enregistré — colle pour remplacer' : 'ghp_… / github_pat_…'" autocomplete="off" />
+          <button class="btn primary" :disabled="syncBusy" @click="connectGist">{{ sync.gistId ? 'Pousser maintenant' : 'Activer la sync' }}</button>
+          <template v-if="sync.gistId">
+            <button class="btn ghost" :disabled="syncBusy" @click="pullNow">Récupérer</button>
+            <button class="btn ghost danger-ghost" @click="doDisconnect">Déconnecter</button>
+          </template>
+        </div>
+        <p v-if="syncMsg" class="gist-msg">{{ syncMsg }}</p>
+      </div>
+    </Card></Reveal>
+
+    <!-- QUÊTES + RESET -->
+    <Reveal :index="4"><Card class="block">
       <span class="kicker">Quêtes & remise à zéro</span>
       <div class="foot-row">
         <div>
@@ -173,6 +270,23 @@ function doReset() { game.resetProgress(); confirmReset.value = false; }
 .llbtn { width: 28px; height: 28px; border: 1px solid var(--hairline-2); background: var(--canvas); color: var(--ink-2); border-radius: var(--r-sm); cursor: pointer; font-family: var(--font-mono); font-size: 13px; transition: all var(--t1) var(--ease); }
 .llbtn:hover { border-color: var(--accent-dim); }
 .llbtn.on { background: var(--accent); color: var(--ink-on-accent); border-color: var(--accent); font-weight: 700; }
+
+/* sauvegarde & sync */
+.save-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.hidden-file { display: none; }
+.gist { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+.gist-head { display: flex; align-items: center; gap: 10px; }
+.gist-title { font-size: 14px; font-weight: 600; color: var(--ink); }
+.gist-hint { font-size: 12.5px; color: var(--ink-2); line-height: 1.55; margin: 8px 0 12px; max-width: 75ch; }
+.gist-hint b { color: var(--ink); }
+.gist-row { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; }
+.tok-in { flex: 1 1 260px; min-width: 220px; background: var(--canvas); border: 1px solid var(--hairline-2); border-radius: var(--r-sm); color: var(--ink); padding: 9px 12px; font-size: 13.5px; font-family: var(--font-mono); }
+.tok-in:focus { outline: none; border-color: var(--accent-dim); box-shadow: 0 0 0 3px var(--accent-soft); }
+.gist-msg { font-size: 12.5px; color: var(--amber); margin: 10px 0 0; }
+.btn.primary { background: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.danger-ghost:hover { border-color: var(--red); color: var(--red); }
 
 .foot-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
 .reset { background: transparent; border: 1px solid var(--hairline-2); color: var(--ink-3); border-radius: var(--r-sm); padding: 9px 15px; cursor: pointer; font-size: 13px; transition: all var(--t1) var(--ease); }
