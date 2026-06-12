@@ -333,8 +333,8 @@ export function nextBottlenecks(tasks: Task[], traders: TraderFull[], p: PlayerS
   out.push({
     type: avail.length ? 'quest' : 'clear',
     title: avail.length ? `${avail.length} quêtes faisables maintenant` : 'Aucune quête bloquée par le niveau',
-    detail: avail.length ? 'Ouvre le module Quêtes pour les voir' : 'Monte ton niveau / tes marchands',
-    to: '/quetes',
+    detail: avail.length ? 'Planifie ton prochain raid pour les avancer' : 'Monte ton niveau / tes marchands',
+    to: avail.length ? '/raid' : '/quetes',
   });
 
   return out

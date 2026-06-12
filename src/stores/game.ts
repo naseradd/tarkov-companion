@@ -12,6 +12,7 @@ const LS = {
   objDone: 'eft.objectivesDone',
   density: 'eft.density',
   prestige: 'eft.prestige',
+  pinned: 'eft.pinnedTasks',
 };
 
 function loadSet(key: string): Set<string> {
@@ -42,6 +43,7 @@ export const useGameStore = defineStore('game', {
     objectivesDone: loadSet(LS.objDone), // objective IDs
     density: (localStorage.getItem(LS.density) as Density) || ('regular' as Density),
     prestige: Number(localStorage.getItem(LS.prestige)) || 0, // niveau de prestige (0 = aucun)
+    pinned: loadSet(LS.pinned), // quêtes épinglées (focus du joueur)
   }),
 
   getters: {
@@ -51,6 +53,7 @@ export const useGameStore = defineStore('game', {
     traderLL: (s) => (normalizedName: string) => s.traderLevels[normalizedName] ?? 1,
     hideoutLevel: (s) => (normalizedName: string) => s.hideoutBuilt[normalizedName] ?? 0,
     fleaUnlocked: (s) => s.level >= FLEA_LEVEL,
+    isPinned: (s) => (id: string) => s.pinned.has(id),
   },
 
   actions: {
@@ -82,6 +85,12 @@ export const useGameStore = defineStore('game', {
       this.objectivesDone = new Set(this.objectivesDone);
       localStorage.setItem(LS.objDone, JSON.stringify([...this.objectivesDone]));
     },
+    togglePin(id: string) {
+      if (this.pinned.has(id)) this.pinned.delete(id);
+      else this.pinned.add(id);
+      this.pinned = new Set(this.pinned);
+      localStorage.setItem(LS.pinned, JSON.stringify([...this.pinned]));
+    },
     setDensity(d: Density) {
       this.density = d;
       localStorage.setItem(LS.density, d);
@@ -97,10 +106,12 @@ export const useGameStore = defineStore('game', {
       this.hideoutBuilt = {};
       this.completed = new Set();
       this.objectivesDone = new Set();
+      this.pinned = new Set();
       localStorage.removeItem(LS.done);
       localStorage.removeItem(LS.objDone);
       localStorage.removeItem(LS.traders);
       localStorage.removeItem(LS.hideout);
+      localStorage.removeItem(LS.pinned);
       localStorage.setItem(LS.level, '1');
     },
   },

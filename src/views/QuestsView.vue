@@ -69,7 +69,8 @@ const rows = computed<Row[]>(() => {
       if (stateFilter.value !== 'all' && r.state !== stateFilter.value) return false;
       if (q && !r.task.name.toLowerCase().includes(q)) return false;
       return true;
-    });
+    })
+    .sort((a, b) => Number(game.isPinned(b.task.id)) - Number(game.isPinned(a.task.id)));
 });
 
 const counts = computed(() => {
@@ -158,6 +159,12 @@ const stateOpts = [
                 <span v-if="r.task.experience" class="num">· {{ r.task.experience.toLocaleString('fr-FR') }} XP</span>
               </div>
             </div>
+            <button
+              class="pin"
+              :class="{ on: game.isPinned(r.task.id) }"
+              :title="game.isPinned(r.task.id) ? 'Désépingler' : 'Épingler (focus raid)'"
+              @click.stop="game.togglePin(r.task.id)"
+            >{{ game.isPinned(r.task.id) ? '★' : '☆' }}</button>
             <div class="q-badges">
               <Badge v-if="r.state === 'available'" variant="good">dispo</Badge>
               <Badge v-else-if="r.state === 'locked'" variant="info">verrouillée</Badge>
@@ -275,6 +282,9 @@ const stateOpts = [
 .q-name { font-family: var(--font-display); font-weight: 600; font-size: 16.5px; }
 .q.done .q-name { text-decoration: line-through; }
 .q-sub { font-size: 12.5px; color: var(--ink-3); display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
+.pin { background: none; border: none; cursor: pointer; font-size: 17px; color: var(--ink-4); padding: 2px 4px; line-height: 1; flex: 0 0 auto; transition: color var(--t1) var(--ease), transform var(--t1) var(--ease-spring); }
+.pin:hover { color: var(--amber); transform: scale(1.15); }
+.pin.on { color: var(--amber); }
 .q-badges { display: flex; gap: 5px; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; max-width: 280px; }
 .caret { font-family: var(--font-mono); color: var(--ink-3); width: 16px; text-align: center; font-size: 16px; }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const nav = [
   { to: '/', label: 'Dashboard', icon: '◧', end: true },
+  { to: '/raid', label: 'Raid', icon: '⊳' },
   { to: '/trame', label: 'Trame', icon: '◈' },
   { to: '/cartes', label: 'Cartes', icon: '◎' },
   { to: '/quetes', label: 'Quêtes', icon: '✓' },

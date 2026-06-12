@@ -26,6 +26,7 @@ src/
     penetration.ts       # note efficacité ammo × classe d'armure
     economy.ts           # verdict keep/sell, ₽/slot net de taxe, craft/h, barter savings
     progression.ts       # quest availability (DAG) — taskRequirements (status complete/active/failed) + traderRequirements (gate LL), trame principale (storyArc kappa/LK), traderStandingQuests, activeQuestItems, next bottleneck, hoard list
+    raid.ts              # planificateur de raid : rankMaps (cartes classées par objectifs actionnables), buildBrief (clés/apporter/trouver/cibles par carte), anywhereQuests
     traders.ts           # tips curatés par marchand (comment monter LL, spécialité, piège) keyed normalizedName
     btc.ts               # ROI ferme Bitcoin
   stores/game.ts         # Pinia : faction, niveau PMC, LL marchands, hideout build, quêtes+objectifs faits, scav/karma, density (tout localStorage)
@@ -35,9 +36,9 @@ src/
     AppHeader.vue AppSidebar.vue CommandPalette.vue
     TacticalMap.vue RoutePanel.vue MapLegend.vue
   views/
-    DashboardView StorylineView MapsView QuestsView TradersView TraderDetailView LootView GearView HideoutView ConfigView
+    DashboardView RaidView StorylineView MapsView QuestsView TradersView TraderDetailView LootView GearView HideoutView ConfigView
 ```
-Routes (9) : dashboard `/` · trame `/trame` · cartes `/cartes` · quetes `/quetes` · marchands `/marchands` + détail `/marchands/:name` · loot `/loot` · gear `/gear` · hideout `/hideout` · config `/config`.
+Routes (10) : dashboard `/` · raid `/raid` (planificateur : boucle choisir carte → préparer → cocher en raid → cascade) · trame `/trame` · cartes `/cartes` · quetes `/quetes` · marchands `/marchands` + détail `/marchands/:name` · loot `/loot` · gear `/gear` · hideout `/hideout` · config `/config`. Quêtes épinglables (`game.pinned`) : priorisent le ranking raid et le tri des listes.
 
 ## Design system — « warm field intelligence »
 Sombre tactique mais **chaud, arrondi, lisible, premium** (pas le CRT froid). Tout passe par les tokens de `style.css`.

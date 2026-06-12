@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 
 const routes = [
   { path: '/', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
+  { path: '/raid', name: 'raid', component: () => import('@/views/RaidView.vue') },
   { path: '/trame', name: 'storyline', component: () => import('@/views/StorylineView.vue') },
   { path: '/cartes', name: 'maps', component: () => import('@/views/MapsView.vue') },
   { path: '/quetes', name: 'quests', component: () => import('@/views/QuestsView.vue') },
